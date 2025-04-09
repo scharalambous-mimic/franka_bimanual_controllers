@@ -26,6 +26,7 @@
   <arg name="controllers_to_start" default="panda_right_state_controller panda_left_state_controller"/>
 
   <!-- The list of the joint_states topics of all combined robots to fuse to a complete topic -->
+  <!-- TODO (stefanos): Remove the gripper joint states from the list if gripper-less? -->
   <arg name="joint_states_source_list" default="[panda_right_state_controller/joint_states, panda_left_state_controller/joint_states, panda_right/franka_gripper/joint_states, panda_left/franka_gripper/joint_states]"/>
 
   <node name="$(arg robot_id)" pkg="franka_control" type="franka_combined_control_node" output="screen" required="true" >
