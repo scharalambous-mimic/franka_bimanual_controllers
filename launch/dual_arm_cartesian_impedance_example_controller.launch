@@ -9,6 +9,7 @@
   <arg name="robot_id_right" value="panda_right" />
   <arg name="robot_id_left" value="panda_left" />
   <arg name="robot_ips" value="{panda_right/robot_ip: $(arg robot_right_ip),panda_left/robot_ip: $(arg robot_left_ip)}" />
+  <arg name="use_grippers" default="false" />
 
 
   <rosparam file="$(find franka_description)/robots/$(arg arm_id)/joint_limits.yaml" command="load"/>
@@ -25,21 +26,23 @@
   </group>
    <node name="rqt_reconfigure" pkg="rqt_reconfigure" type="rqt_reconfigure" required="false" /> 
 
-  <arg name="robot_ip" />
-  <arg name="stop_at_shutdown" default="false" />
-  <arg name="joint_names_right" default="[$(arg robot_id_right)_finger_joint1, $(arg robot_id_right)_finger_joint2]" />
-  <arg name="joint_names_left" default="[$(arg robot_id_left)_finger_joint1, $(arg robot_id_left)_finger_joint2]" />
-  <node name="$(arg robot_id_right)_franka_gripper" pkg="franka_gripper" type="franka_gripper_node" output="screen">
-    <param name="robot_ip" value="$(arg robot_right_ip)"/>
-    <param name="stop_at_shutdown" value="$(arg stop_at_shutdown)" />
-    <rosparam command="load" file="$(find franka_gripper)/config/franka_gripper_node.yaml" />
-    <rosparam param="joint_names" subst_value="true">$(arg joint_names_right)</rosparam>
-  </node>
+  <group if="$(arg use_grippers)">
+    <arg name="robot_ip" />
+    <arg name="stop_at_shutdown" default="false" />
+    <arg name="joint_names_right" default="[$(arg robot_id_right)_finger_joint1, $(arg robot_id_right)_finger_joint2]" />
+    <arg name="joint_names_left" default="[$(arg robot_id_left)_finger_joint1, $(arg robot_id_left)_finger_joint2]" />
+    <node name="$(arg robot_id_right)_franka_gripper" pkg="franka_gripper" type="franka_gripper_node" output="screen">
+      <param name="robot_ip" value="$(arg robot_right_ip)"/>
+      <param name="stop_at_shutdown" value="$(arg stop_at_shutdown)" />
+      <rosparam command="load" file="$(find franka_gripper)/config/franka_gripper_node.yaml" />
+      <rosparam param="joint_names" subst_value="true">$(arg joint_names_right)</rosparam>
+    </node>
 
-  <node name="$(arg robot_id_left)_franka_gripper" pkg="franka_gripper" type="franka_gripper_node" output="screen">
-    <param name="robot_ip" value="$(arg robot_left_ip)"/>
-    <param name="stop_at_shutdown" value="$(arg stop_at_shutdown)" />
-    <rosparam command="load" file="$(find franka_gripper)/config/franka_gripper_node.yaml" />
-    <rosparam param="joint_names" subst_value="true">$(arg joint_names_left)</rosparam>
-  </node>
+    <node name="$(arg robot_id_left)_franka_gripper" pkg="franka_gripper" type="franka_gripper_node" output="screen">
+      <param name="robot_ip" value="$(arg robot_left_ip)"/>
+      <param name="stop_at_shutdown" value="$(arg stop_at_shutdown)" />
+      <rosparam command="load" file="$(find franka_gripper)/config/franka_gripper_node.yaml" />
+      <rosparam param="joint_names" subst_value="true">$(arg joint_names_left)</rosparam>
+    </node>
+  </group>
 </launch>
