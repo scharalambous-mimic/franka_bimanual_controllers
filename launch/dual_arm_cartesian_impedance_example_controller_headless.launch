@@ -12,6 +12,11 @@
 
   <rosparam file="$(find franka_description)/robots/$(arg arm_id)/joint_limits.yaml" command="load"/>
 
+  <!-- Topic remappings for equilibrium pose topics -->
+  <remap from="/$(arg robot_id)/bimanual_cartesian_impedance_controller/panda_right_equilibrium_pose" to="arm_right/pose/commanded_wrist"/>
+  <remap from="/$(arg robot_id)/bimanual_cartesian_impedance_controller/panda_left_equilibrium_pose" to="arm_left/pose/commanded_wrist"/>
+
+
   <include file="$(find franka_bimanual_controllers)/launch/franka_combined_control.launch" >
     <arg name="robot_id" value="$(arg robot_id)" />
     <arg name="robot_ips" value="$(arg robot_ips)" />
@@ -20,12 +25,7 @@
   <group ns="$(arg robot_id)">
     <rosparam command="load" file="$(find franka_bimanual_controllers)/config/franka_bimanual_controllers.yaml" />
     <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen"  args="bimanual_cartesian_impedance_controller"/>
-  </group>
-
-  <!-- Topic remappings for equilibrium pose topics -->
-  <remap from="/$(arg robot_id)/bimanual_cartesian_impedance_controller/panda_right_equilibrium_pose" to="arm_right/pose/commanded_wrist"/>
-  <remap from="/$(arg robot_id)/bimanual_cartesian_impedance_controller/panda_left_equilibrium_pose" to="arm_left/pose/commanded_wrist"/>
-
+  </group>`
 
   <group if="$(arg use_grippers)">
     <arg name="robot_ip" />
