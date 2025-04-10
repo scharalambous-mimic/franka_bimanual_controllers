@@ -27,8 +27,8 @@
   <remap from="arm_left/pose/state_wrist" to="$(arg robot_id)/bimanual_cartesian_impedance_control/panda_left_cartesian_pose"/>
 
   <!-- Topic remappings for equilibrium pose topics -->
-  <remap from="/equilibrium_pose_right" to="arm_right/pose/commanded_wrist"/>
-  <remap from="/equilibrium_pose_left" to="arm_left/pose/commanded_wrist"/>
+  <remap from="/panda_dual/bimanual_cartesian_impedance_controller/panda_right_equilibrium_pose" to="arm_right/pose/commanded_wrist"/>
+  <remap from="/panda_dual/bimanual_cartesian_impedance_controller/panda_left_equilibrium_pose" to="arm_left/pose/commanded_wrist"/>
 
 
   <group if="$(arg use_grippers)">
