@@ -47,7 +47,7 @@
       <param name="robot_description" command="xacro $(arg robot) $(arg args)" />
       <rosparam param="source_list"  subst_value="true">$(arg joint_states_source_list)</rosparam>
       <param name="rate" value="30"/>
-      <remap from="/joint_states" to="/raw_joint_states"/>
+      <remap from="joint_states" to="raw_joint_states"/>
     </node>
 
   </group>
