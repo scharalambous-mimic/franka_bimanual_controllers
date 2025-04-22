@@ -22,6 +22,7 @@
 #include <franka_hw/franka_model_interface.h>
 #include <franka_hw/franka_state_interface.h>
 #include <franka_hw/trigger_rate.h>
+#include <std_srvs/Trigger.h>
 
 namespace franka_bimanual_controllers {
 
@@ -108,6 +109,8 @@ class BiManualCartesianImpedanceControl
   ///< Transformation from the centering frame to the left end effector.
   Eigen::Affine3d EEl_T_C_{};
 
+  bool is_safe{false}; ///< Safety flag to enable/disable control updates.
+
   ///< Publisher for the centering tracking frame of the coordinated motion.
   realtime_tools::RealtimePublisher<geometry_msgs::PoseStamped> center_frame_pub_;
   ///< Rate to trigger publishing the current pose of the centering frame.
@@ -186,6 +189,12 @@ class BiManualCartesianImpedanceControl
 
   ros::Subscriber sub_nullspace_left_;
   void equilibriumConfigurationCallback_left(const  sensor_msgs::JointState::ConstPtr&  joint);
+
+  ros::ServiceServer safe_service_server_;
+  ros::ServiceServer unsafe_service_server_;
+
+  bool setSafeStateCallback(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res);
+  bool setUnsafeStateCallback(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res);
 
    ros::Publisher pub_right;
    ros::Publisher pub_left;
