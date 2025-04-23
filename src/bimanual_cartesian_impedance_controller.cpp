@@ -19,7 +19,7 @@
 #include <tf/transform_listener.h>
 #include <tf_conversions/tf_eigen.h>
 #include "sensor_msgs/JointState.h"
-#include <std_srvs/Trigger.h>
+#include <std_srvs/SetBool.h>
 namespace franka_bimanual_controllers {
 
 bool BiManualCartesianImpedanceControl::initArm(
@@ -189,10 +189,8 @@ bool BiManualCartesianImpedanceControl::init(hardware_interface::RobotHW* robot_
     }
 
    // Advertise safety services
-   safe_service_server_ = node_handle.advertiseService(
-       "setSafeState", &BiManualCartesianImpedanceControl::setSafeStateCallback, this);
-   unsafe_service_server_ = node_handle.advertiseService(
-       "setUnsafeState", &BiManualCartesianImpedanceControl::setUnsafeStateCallback, this);
+   safety_service_server_ = node_handle.advertiseService(
+       "set_safety_state", &BiManualCartesianImpedanceControl::setSafetyCallback, this);
 
    return left_success && right_success;
 }
@@ -760,30 +758,19 @@ void BiManualCartesianImpedanceControl::equilibriumConfigurationCallback_left(co
 
 }
 
-// Callback function for the setSafeState service
-bool BiManualCartesianImpedanceControl::setSafeStateCallback(
-    std_srvs::Trigger::Request& req,
-    std_srvs::Trigger::Response& res) {
-  is_safe_ = true;
+// Callback function for the set_safety_state service
+bool BiManualCartesianImpedanceControl::setSafetyCallback(
+    std_srvs::SetBool::Request& req,
+    std_srvs::SetBool::Response& res) {
+  is_safe_ = req.data;
   res.success = true;
-  res.message = "Controller set to SAFE state.";
-  ROS_INFO("Controller set to SAFE state.");
-  return true;
-}
-
-// Callback function for the setUnsafeState service
-bool BiManualCartesianImpedanceControl::setUnsafeStateCallback(
-    std_srvs::Trigger::Request& req,
-    std_srvs::Trigger::Response& res) {
-  is_safe_ = false;
-  res.success = true;
-  res.message = "Controller set to UNSAFE state.";
-  ROS_WARN("Controller set to UNSAFE state.");
-  // Optionally: Send zero torques immediately when becoming unsafe
-  // for (size_t i = 0; i < 7; ++i) {
-  //   arms_data_.at(left_arm_id_).joint_handles_[i].setCommand(0.0);
-  //   arms_data_.at(right_arm_id_).joint_handles_[i].setCommand(0.0);
-  // }
+  if (is_safe_) {
+    res.message = "Controller set to SAFE state.";
+    ROS_INFO("Controller set to SAFE state.");
+  } else {
+    res.message = "Controller set to UNSAFE state.";
+    ROS_WARN("Controller set to UNSAFE state.");
+  }
   return true;
 }
 }  // namespace franka_bimanual_controllers

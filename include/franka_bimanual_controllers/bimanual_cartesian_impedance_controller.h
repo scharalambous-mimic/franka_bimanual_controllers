@@ -22,7 +22,7 @@
 #include <franka_hw/franka_model_interface.h>
 #include <franka_hw/franka_state_interface.h>
 #include <franka_hw/trigger_rate.h>
-#include <std_srvs/Trigger.h>
+#include <std_srvs/SetBool.h>
 
 namespace franka_bimanual_controllers {
 
@@ -191,11 +191,8 @@ class BiManualCartesianImpedanceControl
   ros::Subscriber sub_nullspace_left_;
   void equilibriumConfigurationCallback_left(const  sensor_msgs::JointState::ConstPtr&  joint);
 
-  ros::ServiceServer safe_service_server_;
-  ros::ServiceServer unsafe_service_server_;
-
-  bool setSafeStateCallback(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res);
-  bool setUnsafeStateCallback(std_srvs::Trigger::Request& req, std_srvs::Trigger::Response& res);
+  ros::ServiceServer safety_service_server_;
+  bool setSafetyCallback(std_srvs::SetBool::Request& req, std_srvs::SetBool::Response& res);
 
    ros::Publisher pub_right;
    ros::Publisher pub_left;
