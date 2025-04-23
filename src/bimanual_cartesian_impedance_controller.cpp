@@ -204,7 +204,11 @@ startingArmRight();
 
 void BiManualCartesianImpedanceControl::update(const ros::Time& /*time*/,
                                                         const ros::Duration& /*period*/) {
-  if (is_safe) {
+  if (!initial_commands_sent_) {
+    updateArmLeft();
+    updateArmRight();
+    initial_commands_sent_ = true;
+  } else if (is_safe_) {
     updateArmLeft();
     updateArmRight();
   } // Else: Do nothing, or potentially send zero torques / hold position if needed.
@@ -760,7 +764,7 @@ void BiManualCartesianImpedanceControl::equilibriumConfigurationCallback_left(co
 bool BiManualCartesianImpedanceControl::setSafeStateCallback(
     std_srvs::Trigger::Request& req,
     std_srvs::Trigger::Response& res) {
-  is_safe = true;
+  is_safe_ = true;
   res.success = true;
   res.message = "Controller set to SAFE state.";
   ROS_INFO("Controller set to SAFE state.");
@@ -771,7 +775,7 @@ bool BiManualCartesianImpedanceControl::setSafeStateCallback(
 bool BiManualCartesianImpedanceControl::setUnsafeStateCallback(
     std_srvs::Trigger::Request& req,
     std_srvs::Trigger::Response& res) {
-  is_safe = false;
+  is_safe_ = false;
   res.success = true;
   res.message = "Controller set to UNSAFE state.";
   ROS_WARN("Controller set to UNSAFE state.");
