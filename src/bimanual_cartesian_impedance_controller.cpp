@@ -417,9 +417,8 @@ for (int i = 0; i < 7; ++i) {
   tau_relative << jacobian.transpose() * (-left_arm_data.cartesian_stiffness_relative_ * error_relative-
                                       left_arm_data.cartesian_damping_relative_ * (jacobian * dq - jacobian_right * dq_right)); //TODO: MAKE THIS VELOCITY RELATIVE
   // Desired torque
-  tau_d_left << coriolis; // Start with gravity compensation
   if (is_safe_) {
-      tau_d_left << tau_d_left + tau_task + tau_nullspace_left + tau_joint_limit + tau_relative;
+      tau_d_left << tau_d_left + tau_task + tau_nullspace_left + coriolis + tau_joint_limit + tau_relative;
   }
   // Saturate torque rate to avoid discontinuities
   tau_d_left << saturateTorqueRateLeft(tau_d_left, tau_J_d);
@@ -582,9 +581,8 @@ for (int i = 0; i < 7; ++i) {
   tau_relative << jacobian.transpose() * (-right_arm_data.cartesian_stiffness_relative_ * error_relative-
                                       right_arm_data.cartesian_damping_relative_ * (jacobian * dq - jacobian_left * dq_left)); 
   // Desired torque
-  tau_d << coriolis; // Start with gravity compensation
   if (is_safe_) {
-      tau_d << tau_d + tau_task + tau_nullspace_right + tau_joint_limit + tau_relative;
+      tau_d << tau_d + tau_task + tau_nullspace_right + coriolis + tau_joint_limit + tau_relative;
   }
   // Saturate torque rate to avoid discontinuities
   tau_d << saturateTorqueRateRight(tau_d, tau_J_d);
