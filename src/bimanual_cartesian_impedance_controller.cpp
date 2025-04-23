@@ -207,11 +207,13 @@ last_heartbeat_time_ = time; // Initialize heartbeat time
 
 void BiManualCartesianImpedanceControl::update(const ros::Time& time,
                                                         const ros::Duration& /*period*/) {
-  // Check heartbeat
-  if ((time - last_heartbeat_time_).toSec() > 0.1) {
-    if (is_safe_) {
-        ROS_WARN("Heartbeat timed out. Setting controller to UNSAFE.");
-        is_safe_ = false;
+  // Check heartbeat only if the initial one has been received
+  if (initial_heartbeat_received_) {
+    if ((time - last_heartbeat_time_).toSec() > 0.1) {
+      if (is_safe_) {
+          ROS_WARN("Heartbeat timed out. Setting controller to UNSAFE.");
+          is_safe_ = false;
+      }
     }
   }
 
@@ -709,6 +711,9 @@ double BiManualCartesianImpedanceControl::calculateTauJointLimit(double q_value,
 
 void BiManualCartesianImpedanceControl::equilibriumPoseCallback_left(
     const geometry_msgs::PoseStampedConstPtr& msg) {
+  if (!initial_heartbeat_received_) {
+      return; // Skip update if initial heartbeat not received
+  }
   auto& left_arm_data = arms_data_.at(left_arm_id_);
   left_arm_data.position_d_ << msg->pose.position.x, msg->pose.position.y, msg->pose.position.z;
   Eigen::Quaterniond last_orientation_d_(left_arm_data.orientation_d_);
@@ -718,6 +723,9 @@ void BiManualCartesianImpedanceControl::equilibriumPoseCallback_left(
 
 void BiManualCartesianImpedanceControl::equilibriumPoseCallback_right(
     const geometry_msgs::PoseStampedConstPtr& msg) {
+  if (!initial_heartbeat_received_) {
+      return; // Skip update if initial heartbeat not received
+  }
   auto& right_arm_data = arms_data_.at(right_arm_id_);
   right_arm_data.position_d_ << msg->pose.position.x, msg->pose.position.y, msg->pose.position.z;
   Eigen::Quaterniond last_orientation_d_(right_arm_data.orientation_d_);
@@ -782,6 +790,10 @@ bool BiManualCartesianImpedanceControl::setSafetyCallback(
 }
 
 void BiManualCartesianImpedanceControl::heartbeatCallback(const std_msgs::Header::ConstPtr& msg) {
+    if (!initial_heartbeat_received_) {
+        initial_heartbeat_received_ = true;
+        ROS_INFO("Initial collision detection heartbeat received. Controller operational.");
+    }
     last_heartbeat_time_ = msg->stamp;
 }
 }  // namespace franka_bimanual_controllers

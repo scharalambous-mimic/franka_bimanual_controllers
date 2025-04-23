@@ -110,8 +110,9 @@ class BiManualCartesianImpedanceControl
   ///< Transformation from the centering frame to the left end effector.
   Eigen::Affine3d EEl_T_C_{};
 
-  bool is_safe_{false}; ///< Safety flag to enable/disable control updates.
+  bool is_safe_{true}; ///< Safety flag to enable/disable control updates.
   ros::Time last_heartbeat_time_;     ///< Timestamp of the last received heartbeat.
+  bool initial_heartbeat_received_{false}; ///< Flag to indicate if the first heartbeat was received.
 
   ///< Publisher for the centering tracking frame of the coordinated motion.
   realtime_tools::RealtimePublisher<geometry_msgs::PoseStamped> center_frame_pub_;
