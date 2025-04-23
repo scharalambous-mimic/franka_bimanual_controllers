@@ -192,16 +192,29 @@ bool BiManualCartesianImpedanceControl::init(hardware_interface::RobotHW* robot_
    safety_service_server_ = node_handle.advertiseService(
        "set_safety_state", &BiManualCartesianImpedanceControl::setSafetyCallback, this);
 
+   // Subscribe to heartbeat topic
+   heartbeat_sub_ = node_handle.subscribe(
+       "collision_detection_heartbeat", 1, &BiManualCartesianImpedanceControl::heartbeatCallback, this);
+
    return left_success && right_success;
 }
 
-void BiManualCartesianImpedanceControl::starting(const ros::Time& /*time*/) {
+void BiManualCartesianImpedanceControl::starting(const ros::Time& time) {
 startingArmLeft();
 startingArmRight();
+last_heartbeat_time_ = time; // Initialize heartbeat time
 }
 
-void BiManualCartesianImpedanceControl::update(const ros::Time& /*time*/,
+void BiManualCartesianImpedanceControl::update(const ros::Time& time,
                                                         const ros::Duration& /*period*/) {
+  // Check heartbeat
+  if ((time - last_heartbeat_time_).toSec() > 0.1) {
+    if (is_safe_) {
+        ROS_WARN("Heartbeat timed out. Setting controller to UNSAFE.");
+        is_safe_ = false;
+    }
+  }
+
   if (!initial_commands_sent_) {
     updateArmLeft();
     updateArmRight();
@@ -772,6 +785,10 @@ bool BiManualCartesianImpedanceControl::setSafetyCallback(
     ROS_WARN("Controller set to UNSAFE state.");
   }
   return true;
+}
+
+void BiManualCartesianImpedanceControl::heartbeatCallback(const std_msgs::Header::ConstPtr& msg) {
+    last_heartbeat_time_ = msg->stamp;
 }
 }  // namespace franka_bimanual_controllers
 

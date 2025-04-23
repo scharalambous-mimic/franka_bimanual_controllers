@@ -23,6 +23,7 @@
 #include <franka_hw/franka_state_interface.h>
 #include <franka_hw/trigger_rate.h>
 #include <std_srvs/SetBool.h>
+#include <std_msgs/Header.h>
 
 namespace franka_bimanual_controllers {
 
@@ -111,6 +112,7 @@ class BiManualCartesianImpedanceControl
 
   bool is_safe_{false}; ///< Safety flag to enable/disable control updates.
   bool initial_commands_sent_{false}; ///< Flag to ensure initial commands are always sent.
+  ros::Time last_heartbeat_time_;     ///< Timestamp of the last received heartbeat.
 
   ///< Publisher for the centering tracking frame of the coordinated motion.
   realtime_tools::RealtimePublisher<geometry_msgs::PoseStamped> center_frame_pub_;
@@ -194,15 +196,17 @@ class BiManualCartesianImpedanceControl
   ros::ServiceServer safety_service_server_;
   bool setSafetyCallback(std_srvs::SetBool::Request& req, std_srvs::SetBool::Response& res);
 
-   ros::Publisher pub_right;
-   ros::Publisher pub_left;
+  ros::Subscriber heartbeat_sub_;                                           // <<< Add heartbeat subscriber
+  void heartbeatCallback(const std_msgs::Header::ConstPtr& msg);            // <<< Add heartbeat callback
 
-   ros::Publisher pub_force_torque_right;
-   ros::Publisher pub_force_torque_left;
+  ros::Publisher pub_right;
+  ros::Publisher pub_left;
 
-   double joint_limits[7][2];
+  ros::Publisher pub_force_torque_right;
+  ros::Publisher pub_force_torque_left;
 
-   double calculateTauJointLimit(double q_value, double threshold, double magnitude, double upper_bound, double lower_bound);
+  double joint_limits[7][2];
+  double calculateTauJointLimit(double q_value, double threshold, double magnitude, double upper_bound, double lower_bound);
 
 
 };
