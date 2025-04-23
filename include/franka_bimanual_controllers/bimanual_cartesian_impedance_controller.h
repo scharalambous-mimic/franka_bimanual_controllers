@@ -37,7 +37,6 @@ struct FrankaDataContainer {
   std::unique_ptr<franka_hw::FrankaModelHandle>
       model_handle_;  ///< To have access to e.g. jacobians.
   std::vector<hardware_interface::JointHandle> joint_handles_;  ///< To command joint torques.
-  std::vector<hardware_interface::JointHandle> position_joint_handles_; ///< To command joint positions.
 
   double nullspace_stiffness_{20.0};  ///< [Nm/rad] To track the initial joint configuration in
                                       ///< the nullspace of the Cartesian motion.
@@ -73,7 +72,6 @@ class BiManualCartesianImpedanceControl
     : public controller_interface::MultiInterfaceController<
           franka_hw::FrankaModelInterface,
           hardware_interface::EffortJointInterface,
-          hardware_interface::PositionJointInterface,
           franka_hw::FrankaStateInterface> {
  public:
   /**
