@@ -68,12 +68,31 @@ bool BiManualCartesianImpedanceControl::initArm(
         "hardware");
     return false;
   }
+
+  auto* position_joint_interface = robot_hw->get<hardware_interface::PositionJointInterface>();
+  if (position_joint_interface == nullptr) {
+    ROS_ERROR_STREAM(
+        "BiManualCartesianImpedanceControl: Error getting position joint interface from "
+        "hardware");
+    return false;
+  }
+
+  arm_data.joint_handles_.resize(7);
+  arm_data.position_joint_handles_.resize(7);
   for (size_t i = 0; i < 7; ++i) {
     try {
-      arm_data.joint_handles_.push_back(effort_joint_interface->getHandle(joint_names[i]));
+      arm_data.joint_handles_[i] = (effort_joint_interface->getHandle(joint_names[i]));
     } catch (const hardware_interface::HardwareInterfaceException& ex) {
       ROS_ERROR_STREAM(
-          "BiManualCartesianImpedanceControl: Exception getting joint handles: "
+          "BiManualCartesianImpedanceControl: Exception getting effort joint handles: "
+          << ex.what());
+      return false;
+    }
+    try {
+      arm_data.position_joint_handles_[i] = position_joint_interface->getHandle(joint_names[i]);
+    } catch (const hardware_interface::HardwareInterfaceException& ex) {
+      ROS_ERROR_STREAM(
+          "BiManualCartesianImpedanceControl: Exception getting position joint handles: "
           << ex.what());
       return false;
     }
@@ -215,8 +234,26 @@ void BiManualCartesianImpedanceControl::update(const ros::Time& time,
     }
   }
 
-  updateArmLeft();
-  updateArmRight();
+  if (is_safe_) {
+    // Execute impedance control when safe
+    updateArmLeft();
+    updateArmRight();
+  } else {
+    // Hold current position when unsafe
+    auto& left_arm_data = arms_data_.at(left_arm_id_);
+    franka::RobotState robot_state_left = left_arm_data.state_handle_->getRobotState();
+    Eigen::Map<Eigen::Matrix<double, 7, 1>> q_left(robot_state_left.q.data());
+    for (size_t i = 0; i < 7; ++i) {
+      left_arm_data.position_joint_handles_[i].setCommand(q_left(i));
+    }
+
+    auto& right_arm_data = arms_data_.at(right_arm_id_);
+    franka::RobotState robot_state_right = right_arm_data.state_handle_->getRobotState();
+    Eigen::Map<Eigen::Matrix<double, 7, 1>> q_right(robot_state_right.q.data());
+    for (size_t i = 0; i < 7; ++i) {
+      right_arm_data.position_joint_handles_[i].setCommand(q_right(i));
+    }
+  }
 }
 
 void BiManualCartesianImpedanceControl::startingArmLeft() {
