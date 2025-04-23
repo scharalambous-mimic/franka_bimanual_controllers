@@ -111,7 +111,6 @@ class BiManualCartesianImpedanceControl
   Eigen::Affine3d EEl_T_C_{};
 
   bool is_safe_{false}; ///< Safety flag to enable/disable control updates.
-  bool initial_commands_sent_{false}; ///< Flag to ensure initial commands are always sent.
   ros::Time last_heartbeat_time_;     ///< Timestamp of the last received heartbeat.
 
   ///< Publisher for the centering tracking frame of the coordinated motion.
