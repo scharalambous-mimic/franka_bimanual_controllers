@@ -420,7 +420,7 @@ for (int i = 0; i < 7; ++i) {
   if (is_safe_) {
       tau_d_left << tau_task + tau_nullspace_left + coriolis + tau_joint_limit + tau_relative;
   } else {
-      tau_d_left.setZero(); // Stop immediately if not safe
+      tau_d_left << coriolis;
   }
   // Saturate torque rate to avoid discontinuities
   tau_d_left << saturateTorqueRateLeft(tau_d_left, tau_J_d);
@@ -586,7 +586,7 @@ for (int i = 0; i < 7; ++i) {
   if (is_safe_) {
       tau_d << tau_task + tau_nullspace_right + coriolis + tau_joint_limit + tau_relative;
   } else {
-      tau_d.setZero(); // Stop immediately if not safe
+      tau_d << coriolis;
   }
   // Saturate torque rate to avoid discontinuities
   tau_d << saturateTorqueRateRight(tau_d, tau_J_d);
