@@ -217,6 +217,11 @@ void BiManualCartesianImpedanceControl::update(const ros::Time& time,
     }
   }
 
+  if (!is_safe_) {
+    // Throw an error
+    throw std::runtime_error("Controller is not safe. Exiting update loop.");
+  }
+
   updateArmLeft();
   updateArmRight();
 }
