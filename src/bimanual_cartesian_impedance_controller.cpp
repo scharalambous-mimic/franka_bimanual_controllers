@@ -209,7 +209,7 @@ void BiManualCartesianImpedanceControl::update(const ros::Time& time,
                                                         const ros::Duration& /*period*/) {
   // Check heartbeat only if the initial one has been received
   if (initial_heartbeat_received_) {
-    if ((time - last_heartbeat_time_).toSec() > 0.1) {
+    if ((time - last_heartbeat_time_).toSec() > 0.5) {
       if (is_safe_) {
           ROS_INFO("Heartbeat timed out. Setting controller to UNSAFE. Current time: %f, Last heartbeat: %f", 
                    time.toSec(), last_heartbeat_time_.toSec());
