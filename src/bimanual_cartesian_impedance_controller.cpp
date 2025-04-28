@@ -202,28 +202,45 @@ bool BiManualCartesianImpedanceControl::init(hardware_interface::RobotHW* robot_
 void BiManualCartesianImpedanceControl::starting(const ros::Time& time) {
 startingArmLeft();
 startingArmRight();
-last_heartbeat_time_ = time; // Initialize heartbeat time
-ROS_INFO("Starting controller. Heartbeat time: %f", last_heartbeat_time_.toSec());
+{
+ std::lock_guard<std::mutex> lock(heartbeat_mutex_);
+ last_heartbeat_time_ = time;
+}
+ROS_INFO("Starting controller. Initial last_heartbeat_time_: %f", time.toSec());
 }
 
 void BiManualCartesianImpedanceControl::update(const ros::Time& time,
                                                         const ros::Duration& /*period*/) {
-  // Check heartbeat only if the initial one has been received
-  if (initial_heartbeat_received_) {
-    if ((time - last_heartbeat_time_).toSec() > 0.5) {
-      if (is_safe_) {
-          ROS_INFO("Heartbeat timed out. Setting controller to UNSAFE. Current time: %f, Last heartbeat: %f", 
-                   time.toSec(), last_heartbeat_time_.toSec());
-          ROS_INFO("Delay in heartbeat: %f", (time - last_heartbeat_time_).toSec());
-          is_safe_ = false;
-      }
-    }
+  ros::Time current_last_heartbeat_time;
+  bool initial_heartbeat_was_received = false;
+
+  {
+    // Read the flag and the time under the same lock to avoid race condition
+    std::lock_guard<std::mutex> lock(heartbeat_mutex_);
+    current_last_heartbeat_time = last_heartbeat_time_;
+    initial_heartbeat_was_received = initial_heartbeat_received_;
   }
 
-  if (!is_safe_) {
-    // Throw an error
-    throw std::runtime_error("Controller is not safe. Exiting update loop.");
-  }
+  // Check heartbeat only if the initial one has been received
+  if (initial_heartbeat_was_received) { // Use the value read under the lock
+     double time_diff = (time - current_last_heartbeat_time).toSec();
+     // Throttle this log to avoid spamming, especially if the diff is small
+     ROS_INFO_THROTTLE(1.0, "Update time check: current_time=%.4f, last_heartbeat=%.4f, diff=%.4f",
+                     time.toSec(), current_last_heartbeat_time.toSec(), time_diff);
+      if (time_diff > 0.5) { 
+        if (is_safe_.load()) { // atomic read
+           ROS_INFO("Heartbeat timed out. Setting controller to UNSAFE. Current time: %f, Last heartbeat: %f", 
+                    time.toSec(), current_last_heartbeat_time.toSec());
+           ROS_INFO("Delay in heartbeat: %f", time_diff);
+            is_safe_.store(false); // atomic write
+        }
+      }
+    }
+ 
+  if (!is_safe_.load()) { // atomic read
+     // Throw an error
+     throw std::runtime_error("Controller is not safe. Exiting update loop.");
+   }
 
   updateArmLeft();
   updateArmRight();
@@ -785,9 +802,9 @@ void BiManualCartesianImpedanceControl::equilibriumConfigurationCallback_left(co
 bool BiManualCartesianImpedanceControl::setSafetyCallback(
     std_srvs::SetBool::Request& req,
     std_srvs::SetBool::Response& res) {
-  is_safe_ = req.data;
+  is_safe_.store(req.data); // atomic write
   res.success = true;
-  if (is_safe_) {
+  if (is_safe_.load()) { // atomic read
     res.message = "Controller set to SAFE state.";
     ROS_INFO("Controller set to SAFE state.");
   } else {
@@ -798,12 +815,23 @@ bool BiManualCartesianImpedanceControl::setSafetyCallback(
 }
 
 void BiManualCartesianImpedanceControl::heartbeatCallback(const std_msgs::Header::ConstPtr& msg) {
-    if (!initial_heartbeat_received_) {
-        initial_heartbeat_received_ = true;
-        ROS_INFO("Initial collision detection heartbeat received. Controller operational.");
+    bool first_heartbeat = false;
+    ros::Time received_time = ros::Time::now(); // Keep track of received time for logging
+    ros::Time header_stamp = msg->stamp;      // Get the header stamp
+    {
+        // Lock mutex for write
+        std::lock_guard<std::mutex> lock(heartbeat_mutex_); 
+        // Use the timestamp from the message header as requested
+        last_heartbeat_time_ = header_stamp;
+        if (!initial_heartbeat_received_) {
+            initial_heartbeat_received_ = true;
+            first_heartbeat = true;
+            ROS_INFO("Initial collision detection heartbeat received. Controller operational.");
+        }
     }
-    last_heartbeat_time_ = msg->stamp;
-    ROS_INFO("Heartbeat received. Current time: %f, heartbeat time: %f", ros::Time::now().toSec(), last_heartbeat_time_.toSec());
+      // Log only on the first heartbeat to avoid spam
+      ROS_INFO("First heartbeat processed. Current time: %f, Setting last_heartbeat_time_ to header stamp: %f",
+              received_time.toSec(), header_stamp.toSec());
 }
 }  // namespace franka_bimanual_controllers
 
