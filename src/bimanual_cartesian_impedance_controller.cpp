@@ -203,6 +203,7 @@ void BiManualCartesianImpedanceControl::starting(const ros::Time& time) {
 startingArmLeft();
 startingArmRight();
 last_heartbeat_time_ = time; // Initialize heartbeat time
+ROS_INFO("Starting controller. Heartbeat time: %f", last_heartbeat_time_.toSec());
 }
 
 void BiManualCartesianImpedanceControl::update(const ros::Time& time,
@@ -213,6 +214,7 @@ void BiManualCartesianImpedanceControl::update(const ros::Time& time,
       if (is_safe_) {
           ROS_INFO("Heartbeat timed out. Setting controller to UNSAFE. Current time: %f, Last heartbeat: %f", 
                    time.toSec(), last_heartbeat_time_.toSec());
+          ROS_INFO("Delay in heartbeat: %f", (time - last_heartbeat_time_).toSec());
           is_safe_ = false;
       }
     }
@@ -801,6 +803,7 @@ void BiManualCartesianImpedanceControl::heartbeatCallback(const std_msgs::Header
         ROS_INFO("Initial collision detection heartbeat received. Controller operational.");
     }
     last_heartbeat_time_ = msg->stamp;
+    ROS_INFO("Heartbeat received. Current time: %f, heartbeat time: %f", ros::Time::now().toSec(), last_heartbeat_time_.toSec());
 }
 }  // namespace franka_bimanual_controllers
 
