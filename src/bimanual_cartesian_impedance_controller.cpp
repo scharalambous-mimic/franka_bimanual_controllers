@@ -655,6 +655,16 @@ void BiManualCartesianImpedanceControl::complianceParamCallback(
 
 
   left_arm_data.nullspace_stiffness_ = config.panda_left_nullspace_stiffness;
+  // Update q_d_nullspace_ for the left arm from dynamic reconfigure
+  left_arm_data.q_d_nullspace_ << config.panda_left_q_d_nullspace_j1,
+                                  config.panda_left_q_d_nullspace_j2,
+                                  config.panda_left_q_d_nullspace_j3,
+                                  config.panda_left_q_d_nullspace_j4,
+                                  config.panda_left_q_d_nullspace_j5,
+                                  config.panda_left_q_d_nullspace_j6,
+                                  config.panda_left_q_d_nullspace_j7;
+  ROS_INFO("Left arm nullspace stiffness: %f", left_arm_data.nullspace_stiffness_);
+  ROS_INFO("Left arm q_d_nullspace: %f, %f, %f, %f, %f, %f, %f", left_arm_data.q_d_nullspace_(0), left_arm_data.q_d_nullspace_(1), left_arm_data.q_d_nullspace_(2), left_arm_data.q_d_nullspace_(3), left_arm_data.q_d_nullspace_(4), left_arm_data.q_d_nullspace_(5), left_arm_data.q_d_nullspace_(6));
 
   left_arm_data.cartesian_stiffness_relative_.setIdentity();
   left_arm_data.cartesian_stiffness_relative_.topLeftCorner(3, 3)
@@ -700,7 +710,16 @@ void BiManualCartesianImpedanceControl::complianceParamCallback(
   right_arm_data.cartesian_stiffness_.bottomRightCorner(3, 3) << rotationMatrix_right*right_arm_data.cartesian_stiffness_.bottomRightCorner(3, 3)*rotationMatrix_transpose_right;
 
   right_arm_data.nullspace_stiffness_ = config.panda_right_nullspace_stiffness;
-
+  // Update q_d_nullspace_ for the right arm from dynamic reconfigure
+  right_arm_data.q_d_nullspace_ << config.panda_right_q_d_nullspace_j1,
+                                   config.panda_right_q_d_nullspace_j2,
+                                   config.panda_right_q_d_nullspace_j3,
+                                   config.panda_right_q_d_nullspace_j4,
+                                   config.panda_right_q_d_nullspace_j5,
+                                   config.panda_right_q_d_nullspace_j6,
+                                   config.panda_right_q_d_nullspace_j7;
+  ROS_INFO("Right arm nullspace stiffness: %f", right_arm_data.nullspace_stiffness_);
+  ROS_INFO("Right arm q_d_nullspace: %f, %f, %f, %f, %f, %f, %f", right_arm_data.q_d_nullspace_(0), right_arm_data.q_d_nullspace_(1), right_arm_data.q_d_nullspace_(2), right_arm_data.q_d_nullspace_(3), right_arm_data.q_d_nullspace_(4), right_arm_data.q_d_nullspace_(5), right_arm_data.q_d_nullspace_(6));
 
   right_arm_data.cartesian_stiffness_relative_.setIdentity();
   right_arm_data.cartesian_stiffness_relative_.topLeftCorner(3, 3)
