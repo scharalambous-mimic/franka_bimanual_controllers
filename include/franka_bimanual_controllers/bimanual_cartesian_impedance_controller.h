@@ -40,8 +40,8 @@ struct FrankaDataContainer {
       model_handle_;  ///< To have access to e.g. jacobians.
   std::vector<hardware_interface::JointHandle> joint_handles_;  ///< To command joint torques.
 
-  double nullspace_stiffness_{20.0};  ///< [Nm/rad] To track the initial joint configuration in
-                                      ///< the nullspace of the Cartesian motion.
+  Eigen::Matrix<double, 7, 1> nullspace_stiffness_{Eigen::Matrix<double, 7, 1>::Zero()}; ///< [Nm/rad] Joint-specific gains to track the desired
+                                                                                         ///< nullspace joint configuration.
 
   const double delta_tau_max_{1.0};          ///< [Nm/ms] Maximum difference in joint-torque per
                                              ///< timestep. Used to saturated torque rates to ensure

@@ -413,10 +413,9 @@ void BiManualCartesianImpedanceControl::updateArmLeft() {
   tau_task << jacobian.transpose() * (-left_arm_data.cartesian_stiffness_ * error_left -
                                       left_arm_data.cartesian_damping_ * (jacobian * dq)); 
   // nullspace PD control with damping ratio = 1
-  tau_nullspace_left << (Eigen::MatrixXd::Identity(7, 7) -
-                    jacobian.transpose() * jacobian_transpose_pinv) *
-                       (left_arm_data.nullspace_stiffness_ * null_space_error -
-                        (2.0 * sqrt(left_arm_data.nullspace_stiffness_)) * dq);
+  tau_nullspace_left << (Eigen::MatrixXd::Identity(7, 7) - jacobian.transpose() * jacobian_transpose_pinv) *
+                       ( (left_arm_data.nullspace_stiffness_.array() * null_space_error.array()).matrix() -
+                         (2.0 * left_arm_data.nullspace_stiffness_.array().sqrt() * dq.array()).matrix() );
 
   //Avoid joint limits
   tau_joint_limit.setZero();
@@ -575,10 +574,9 @@ void BiManualCartesianImpedanceControl::updateArmRight() {
   tau_task << jacobian.transpose() * (-right_arm_data.cartesian_stiffness_ * error_right -
                                       right_arm_data.cartesian_damping_ * (jacobian * dq));
   // nullspace PD control with damping ratio = 1
-  tau_nullspace_right << (Eigen::MatrixXd::Identity(7, 7) -
-                    jacobian.transpose() * jacobian_transpose_pinv) *
-                       (right_arm_data.nullspace_stiffness_ * null_space_error -
-                        (2.0 * sqrt(right_arm_data.nullspace_stiffness_)) * dq);
+  tau_nullspace_right << (Eigen::MatrixXd::Identity(7, 7) - jacobian.transpose() * jacobian_transpose_pinv) *
+                        ( (right_arm_data.nullspace_stiffness_.array() * null_space_error.array()).matrix() -
+                          (2.0 * right_arm_data.nullspace_stiffness_.array().sqrt() * dq.array()).matrix() );
 
   //Avoid joint limits
   tau_joint_limit.setZero(); // the comment on the right side is the joint limit reported by 
@@ -654,7 +652,13 @@ void BiManualCartesianImpedanceControl::complianceParamCallback(
   left_arm_data.cartesian_stiffness_.bottomRightCorner(3, 3) << rotationMatrix_left*left_arm_data.cartesian_stiffness_.bottomRightCorner(3, 3)*rotationMatrix_transpose_left;
 
 
-  left_arm_data.nullspace_stiffness_ = config.panda_left_nullspace_stiffness;
+  left_arm_data.nullspace_stiffness_ << config.common_nullspace_stiffness_j1,
+                                        config.common_nullspace_stiffness_j2,
+                                        config.common_nullspace_stiffness_j3,
+                                        config.common_nullspace_stiffness_j4,
+                                        config.common_nullspace_stiffness_j5,
+                                        config.common_nullspace_stiffness_j6,
+                                        config.common_nullspace_stiffness_j7;
   // Update q_d_nullspace_ for the left arm from dynamic reconfigure
   left_arm_data.q_d_nullspace_ << config.panda_left_q_d_nullspace_j1,
                                   config.panda_left_q_d_nullspace_j2,
@@ -663,9 +667,8 @@ void BiManualCartesianImpedanceControl::complianceParamCallback(
                                   config.panda_left_q_d_nullspace_j5,
                                   config.panda_left_q_d_nullspace_j6,
                                   config.panda_left_q_d_nullspace_j7;
-  ROS_INFO("Left arm nullspace stiffness: %f", left_arm_data.nullspace_stiffness_);
-  ROS_INFO("Left arm q_d_nullspace: %f, %f, %f, %f, %f, %f, %f", left_arm_data.q_d_nullspace_(0), left_arm_data.q_d_nullspace_(1), left_arm_data.q_d_nullspace_(2), left_arm_data.q_d_nullspace_(3), left_arm_data.q_d_nullspace_(4), left_arm_data.q_d_nullspace_(5), left_arm_data.q_d_nullspace_(6));
-
+   ROS_INFO_STREAM("Left arm nullspace_stiffness: " << left_arm_data.nullspace_stiffness_.transpose());
+   ROS_INFO("Left arm q_d_nullspace: %f, %f, %f, %f, %f, %f, %f", left_arm_data.q_d_nullspace_(0), left_arm_data.q_d_nullspace_(1), left_arm_data.q_d_nullspace_(2), left_arm_data.q_d_nullspace_(3), left_arm_data.q_d_nullspace_(4), left_arm_data.q_d_nullspace_(5), left_arm_data.q_d_nullspace_(6));
   left_arm_data.cartesian_stiffness_relative_.setIdentity();
   left_arm_data.cartesian_stiffness_relative_.topLeftCorner(3, 3)
       << config.coupling_translational_stiffness * Eigen::Matrix3d::Identity();
@@ -709,7 +712,13 @@ void BiManualCartesianImpedanceControl::complianceParamCallback(
   right_arm_data.cartesian_stiffness_.topLeftCorner(3, 3) << rotationMatrix_right*right_arm_data.cartesian_stiffness_.topLeftCorner(3, 3)*rotationMatrix_transpose_right;
   right_arm_data.cartesian_stiffness_.bottomRightCorner(3, 3) << rotationMatrix_right*right_arm_data.cartesian_stiffness_.bottomRightCorner(3, 3)*rotationMatrix_transpose_right;
 
-  right_arm_data.nullspace_stiffness_ = config.panda_right_nullspace_stiffness;
+  right_arm_data.nullspace_stiffness_ << config.common_nullspace_stiffness_j1,
+                                         config.common_nullspace_stiffness_j2,
+                                         config.common_nullspace_stiffness_j3,
+                                         config.common_nullspace_stiffness_j4,
+                                         config.common_nullspace_stiffness_j5,
+                                         config.common_nullspace_stiffness_j6,
+                                         config.common_nullspace_stiffness_j7;
   // Update q_d_nullspace_ for the right arm from dynamic reconfigure
   right_arm_data.q_d_nullspace_ << config.panda_right_q_d_nullspace_j1,
                                    config.panda_right_q_d_nullspace_j2,
@@ -718,8 +727,8 @@ void BiManualCartesianImpedanceControl::complianceParamCallback(
                                    config.panda_right_q_d_nullspace_j5,
                                    config.panda_right_q_d_nullspace_j6,
                                    config.panda_right_q_d_nullspace_j7;
-  ROS_INFO("Right arm nullspace stiffness: %f", right_arm_data.nullspace_stiffness_);
-  ROS_INFO("Right arm q_d_nullspace: %f, %f, %f, %f, %f, %f, %f", right_arm_data.q_d_nullspace_(0), right_arm_data.q_d_nullspace_(1), right_arm_data.q_d_nullspace_(2), right_arm_data.q_d_nullspace_(3), right_arm_data.q_d_nullspace_(4), right_arm_data.q_d_nullspace_(5), right_arm_data.q_d_nullspace_(6));
+   ROS_INFO_STREAM("Right arm nullspace_stiffness: " << right_arm_data.nullspace_stiffness_.transpose());
+   ROS_INFO("Right arm q_d_nullspace: %f, %f, %f, %f, %f, %f, %f", right_arm_data.q_d_nullspace_(0), right_arm_data.q_d_nullspace_(1), right_arm_data.q_d_nullspace_(2), right_arm_data.q_d_nullspace_(3), right_arm_data.q_d_nullspace_(4), right_arm_data.q_d_nullspace_(5), right_arm_data.q_d_nullspace_(6));
 
   right_arm_data.cartesian_stiffness_relative_.setIdentity();
   right_arm_data.cartesian_stiffness_relative_.topLeftCorner(3, 3)
