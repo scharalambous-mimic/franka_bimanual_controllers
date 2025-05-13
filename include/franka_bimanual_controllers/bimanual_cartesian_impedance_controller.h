@@ -114,7 +114,7 @@ class BiManualCartesianImpedanceControl
 
   std::atomic<bool> is_safe_{true}; ///< Safety flag (atomic for thread safety).
   ros::Time last_heartbeat_time_;     ///< Timestamp of the last received heartbeat.
-  bool initial_heartbeat_received_{false}; ///< Flag to indicate if the first heartbeat was received.
+  std::atomic<bool> initial_heartbeat_received_{false}; ///< Flag to indicate if the first heartbeat was received (atomic for thread safety).
   std::mutex heartbeat_mutex_; ///< Mutex to protect last_heartbeat_time_ access.
 
   ///< Publisher for the centering tracking frame of the coordinated motion.

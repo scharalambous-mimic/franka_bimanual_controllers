@@ -217,7 +217,7 @@ void BiManualCartesianImpedanceControl::update(const ros::Time& time,
     // Read the flag and the time under the same lock to avoid race condition
     std::lock_guard<std::mutex> lock(heartbeat_mutex_);
     current_last_heartbeat_time = last_heartbeat_time_;
-    initial_heartbeat_was_received = initial_heartbeat_received_;
+    initial_heartbeat_was_received = initial_heartbeat_received_.load(); // atomic read
   }
 
   // Check heartbeat only if the initial one has been received
@@ -759,7 +759,7 @@ double BiManualCartesianImpedanceControl::calculateTauJointLimit(double q_value,
 
 void BiManualCartesianImpedanceControl::equilibriumPoseCallback_left(
     const geometry_msgs::PoseStampedConstPtr& msg) {
-  if (!initial_heartbeat_received_) {
+  if (!initial_heartbeat_received_.load()) { // atomic read
       return; // Skip update if initial heartbeat not received
   }
   auto& left_arm_data = arms_data_.at(left_arm_id_);
@@ -771,7 +771,7 @@ void BiManualCartesianImpedanceControl::equilibriumPoseCallback_left(
 
 void BiManualCartesianImpedanceControl::equilibriumPoseCallback_right(
     const geometry_msgs::PoseStampedConstPtr& msg) {
-  if (!initial_heartbeat_received_) {
+  if (!initial_heartbeat_received_.load()) { // atomic read
       return; // Skip update if initial heartbeat not received
   }
   auto& right_arm_data = arms_data_.at(right_arm_id_);
@@ -838,17 +838,15 @@ bool BiManualCartesianImpedanceControl::setSafetyCallback(
 }
 
 void BiManualCartesianImpedanceControl::heartbeatCallback(const std_msgs::Header::ConstPtr& msg) {
-    bool first_heartbeat = false;
-    ros::Time received_time = ros::Time::now(); // Keep track of received time for logging
     ros::Time header_stamp = msg->stamp;      // Get the header stamp
+    ROS_INFO("Heartbeat received at time %f with timestamp: %f", ros::Time::now().toSec(), header_stamp.toSec());
     {
         // Lock mutex for write
         std::lock_guard<std::mutex> lock(heartbeat_mutex_); 
         // Use the timestamp from the message header as requested
         last_heartbeat_time_ = header_stamp;
-        if (!initial_heartbeat_received_) {
-            initial_heartbeat_received_ = true;
-            first_heartbeat = true;
+        if (!initial_heartbeat_received_.load()) { // atomic read
+            initial_heartbeat_received_.store(true); // atomic write
             ROS_INFO("Initial collision detection heartbeat received. Controller operational.");
         }
     }
