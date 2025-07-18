@@ -281,6 +281,9 @@ void BiManualCartesianImpedanceControl::update(const ros::Time& time,
   }
 
   //pPublish the torque messages
+
+  ROS_DEBUG("Publishing commanded torques message with %lu efforts", commanded_torques_msg.effort.size());
+  ROS_DEBUG("Publishing measured torques message with %lu efforts", measured_torques_msg.effort.size());
   pub_commanded_torques_.publish(commanded_torques_msg);
   pub_measured_torques_.publish(measured_torques_msg);
 }
