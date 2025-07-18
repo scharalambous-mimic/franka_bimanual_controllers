@@ -244,7 +244,7 @@ void BiManualCartesianImpedanceControl::update(const ros::Time& time,
 
   updateArmLeft();
   updateArmRight();
-}
+
 
   // log the commanded and published torques
   auto& left_arm_data = arms_data_.at(left_arm_id_);
