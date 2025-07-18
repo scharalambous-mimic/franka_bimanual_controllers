@@ -63,6 +63,8 @@ struct FrankaDataContainer {
   Eigen::Matrix<double, 6, 6> cartesian_stiffness_relative_;         ///< To track the target pose.
   Eigen::Matrix<double, 6, 6> cartesian_damping_relative_;
   Eigen::Matrix<double, 6, 1> force_torque;
+
+  Eigen::Matrix<double, 7, 1> tau_commanded;
 };
 
 /**
@@ -207,6 +209,14 @@ class BiManualCartesianImpedanceControl
 
   ros::Publisher pub_force_torque_right;
   ros::Publisher pub_force_torque_left;
+
+  ros::Publisher pub_commanded_torques_;
+  ros::Publisher pub_measured_torques_;
+
+
+  // variable to store joint names for publishing
+  std::vector<std::string> left_joint_names_;
+  std::vector<std::string> right_joint_names_;
 
   double joint_limits[7][2];
   double calculateTauJointLimit(double q_value, double threshold, double magnitude, double upper_bound, double lower_bound);

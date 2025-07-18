@@ -81,7 +81,7 @@ bool BiManualCartesianImpedanceControl::initArm(
 
   arm_data.position_d_.setZero();
   arm_data.orientation_d_.coeffs() << 0.0, 0.0, 0.0, 1.0;
-
+  arm_data.tau_commanded.setZero(); // (log) Init torque command
   arm_data.cartesian_stiffness_.setZero();
   arm_data.cartesian_damping_.setZero();
   arm_data.force_torque.setZero();
@@ -110,6 +110,7 @@ bool BiManualCartesianImpedanceControl::init(hardware_interface::RobotHW* robot_
         "aborting controller init!");
     return false;
   }
+  left_joint_names_ = left_joint_names;
 
   if (!node_handle.getParam("right/arm_id", right_arm_id_)) {
     ROS_ERROR_STREAM(
@@ -126,6 +127,7 @@ bool BiManualCartesianImpedanceControl::init(hardware_interface::RobotHW* robot_
         "aborting controller init!");
     return false;
   }
+  right_joint_names_ = right_joint_names;
 
   bool left_success = initArm(robot_hw, left_arm_id_, left_joint_names);
   bool right_success = initArm(robot_hw, right_arm_id_, right_joint_names);
@@ -157,7 +159,10 @@ bool BiManualCartesianImpedanceControl::init(hardware_interface::RobotHW* robot_
   pub_force_torque_right= node_handle.advertise<geometry_msgs::WrenchStamped>("/force_torque_right_ext",1);
   pub_force_torque_left= node_handle.advertise<geometry_msgs::WrenchStamped>("/force_torque_left_ext",1);
 
-
+  // publishers for torque logging
+  pub_commanded_torques_ = node_handle.advertise<sensor_msgs::JointState>("commanded_joint_torques", 1);
+  pub_measured_torques_ = node_handle.advertise<sensor_msgs::JointState>("measured_joint_torques", 1);
+  
   dynamic_reconfigure_compliance_param_node_ =
       ros::NodeHandle("dynamic_reconfigure_compliance_param_node");
 
@@ -239,6 +244,45 @@ void BiManualCartesianImpedanceControl::update(const ros::Time& time,
 
   updateArmLeft();
   updateArmRight();
+}
+
+  // log the commanded and published torques
+  auto& left_arm_data = arms_data_.at(left_arm_id_);
+  auto& right_arm_data = arms_data_.at(right_arm_id_);
+
+  franka::RobotState state_left = left_arm_data.state_handle_->getRobotState();
+  franka::RobotState state_right = right_arm_data.state_handle_->getRobotState();
+
+  sensor_msgs::JointState commanded_torques_msg;
+  commanded_torques_msg.header.stamp = time;
+
+  sensor_msgs::JointState measured_torques_msg;
+  measured_torques_msg.header.stamp = time;
+
+  // combine joint names from both arms
+  commanded_torques_msg.name.insert(commanded_torques_msg.name.end(), left_joint_names_.begin(), left_joint_names_.end());
+  commanded_torques_msg.name.insert(commanded_torques_msg.name.end(), right_joint_names_.begin(), right_joint_names_.end());
+  measured_torques_msg.name = commanded_torques_msg.name;
+
+  // combine commanded torques from both arms
+  for (int i = 0; i < 7; ++i) {
+    commanded_torques_msg.effort.push_back(left_arm_data.tau_commanded(i));
+  }
+  for (int i = 0; i < 7; ++i) {
+    commanded_torques_msg.effort.push_back(right_arm_data.tau_commanded(i));
+  }
+
+  // combine measured torques from both arms (tau_J is from joint torque sensors)
+  for (const auto& tau : state_left.tau_J) {
+    measured_torques_msg.effort.push_back(tau);
+  }
+  for (const auto& tau : state_right.tau_J) {
+    measured_torques_msg.effort.push_back(tau);
+  }
+
+  //pPublish the torque messages
+  pub_commanded_torques_.publish(commanded_torques_msg);
+  pub_measured_torques_.publish(measured_torques_msg);
 }
 
 void BiManualCartesianImpedanceControl::startingArmLeft() {
@@ -441,6 +485,10 @@ for (int i = 0; i < 7; ++i) {
   tau_d_left << tau_task + tau_nullspace_left + coriolis+ tau_joint_limit+ tau_relative ;
   // Saturate torque rate to avoid discontinuities
   tau_d_left << saturateTorqueRateLeft(tau_d_left, tau_J_d);
+
+  // store the final commanded torque for logging
+  left_arm_data.tau_commanded = tau_d_left;
+
   for (size_t i = 0; i < 7; ++i) {
     left_arm_data.joint_handles_[i].setCommand(tau_d_left(i));
   }
@@ -602,6 +650,10 @@ for (int i = 0; i < 7; ++i) {
   tau_d << tau_task + tau_nullspace_right + coriolis+tau_joint_limit+tau_relative;
   // Saturate torque rate to avoid discontinuities
   tau_d << saturateTorqueRateRight(tau_d, tau_J_d);
+
+  // store the final commanded torque for logging
+  right_arm_data.tau_commanded = tau_d;
+
   for (size_t i = 0; i < 7; ++i) {
     right_arm_data.joint_handles_[i].setCommand(tau_d(i));
   }
