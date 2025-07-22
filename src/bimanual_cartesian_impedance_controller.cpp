@@ -361,18 +361,24 @@ void BiManualCartesianImpedanceControl::updateArmLeft() {
   Eigen::Matrix<double, 6, 1> error_left;
   error_left.head(3) << position - left_arm_data.position_d_;
 
-  error_left[0]=std::max(-delta_lim, std::min(error_left[0], delta_lim));
-  error_left[1]=std::max(-delta_lim, std::min(error_left[1], delta_lim));
-  error_left[2]=std::max(-delta_lim, std::min(error_left[2], delta_lim));
+  // calculate the magnitude of the position error
+  double position_error_magnitude = error_left.head(3).norm();
+  if (position_error_magnitude > delta_lim){
+    // scale the position error to the delta_lim
+    error_left.head(3) *= (delta_lim / position_error_magnitude);
+  }
 
   Eigen::Matrix<double, 6, 1> error_relative;
   error_relative.head(3) << position - position_right;
   error_relative.tail(3).setZero();
   error_relative.head(3)<< error_relative.head(3) -left_arm_data.position_d_relative_;
 
-  error_relative[0]=std::max(-delta_lim, std::min(error_relative[0], delta_lim));
-  error_relative[1]=std::max(-delta_lim, std::min(error_relative[1], delta_lim));
-  error_relative[2]=std::max(-delta_lim, std::min(error_relative[2], delta_lim));
+  // calculate the magnitude of the relative position error
+  double relative_error_magnitude = error_relative.head(3).norm();
+  if (relative_error_magnitude > delta_lim){
+    // scale the relative position error to the delta_lim
+    error_relative.head(3) *= (delta_lim / relative_error_magnitude);
+  }
 
   // orientation error
   if (left_arm_data.orientation_d_.coeffs().dot(orientation.coeffs()) < 0.0) {
@@ -386,9 +392,14 @@ void BiManualCartesianImpedanceControl::updateArmLeft() {
   error_left.tail(3) << error_quaternion_angle_axis.axis() * error_quaternion_angle_axis.angle();
 
 
-  error_left[3]=std::max(-delta_lim*3, std::min(error_left[3], delta_lim*3));
-  error_left[4]=std::max(-delta_lim*3, std::min(error_left[4], delta_lim*3));
-  error_left[5]=std::max(-delta_lim*3, std::min(error_left[5], delta_lim*3));
+  // define orientation error clipping limit
+  const double orientation_delta_lim = delta_lim * 3.0;
+  // calculate the magnitude of the orientation error
+  double orientation_error_magnitude = error_left.tail(3).norm();
+  if (orientation_error_magnitude > orientation_delta_lim) {
+    // scale the orientation error to the orientation_delta_lim
+    error_left.tail(3) *= (orientation_delta_lim / orientation_error_magnitude);
+  }
 
   // compute control
   // allocate variables
@@ -495,9 +506,11 @@ void BiManualCartesianImpedanceControl::updateArmRight() {
   Eigen::Matrix<double, 6, 1> error_right;
   error_right.head(3) << position - right_arm_data.position_d_;
 
-  error_right[0]=std::max(-delta_lim, std::min(error_right[0], delta_lim));
-  error_right[1]=std::max(-delta_lim, std::min(error_right[1], delta_lim));
-  error_right[2]=std::max(-delta_lim, std::min(error_right[2], delta_lim));
+  // calculate the magnitude of the position error
+  double position_error_magnitude = error_right.head(3).norm();
+  if (position_error_magnitude > delta_lim){
+    // scale the position error to the delta_lim
+    error_right.head(3) *= (delta_lim / position_error_magnitude);
 
 
   geometry_msgs::PoseStamped msg_right;
@@ -539,9 +552,12 @@ void BiManualCartesianImpedanceControl::updateArmRight() {
   error_relative.tail(3).setZero();
   error_relative.head(3)<< error_relative.head(3) -right_arm_data.position_d_relative_;
 
-  error_relative[0]=std::max(-delta_lim, std::min(error_relative[0], delta_lim));
-  error_relative[1]=std::max(-delta_lim, std::min(error_relative[1], delta_lim));
-  error_relative[2]=std::max(-delta_lim, std::min(error_relative[2], delta_lim));
+  // calculate the magnitude of the relative position error
+  double relative_error_magnitude = error_relative.head(3).norm();
+  if (relative_error_magnitude > delta_lim){
+    // scale the relative position error to the delta_lim
+    error_relative.head(3) *= (delta_lim / relative_error_magnitude);
+  }
   
   // orientation error
   if (right_arm_data.orientation_d_.coeffs().dot(orientation.coeffs()) < 0.0) {
@@ -554,9 +570,14 @@ void BiManualCartesianImpedanceControl::updateArmRight() {
   // compute "orientation error"
   error_right.tail(3) << error_quaternion_angle_axis.axis() * error_quaternion_angle_axis.angle();
 
-  error_right[3]=std::max(-delta_lim*3, std::min(error_right[3], delta_lim*3));
-  error_right[4]=std::max(-delta_lim*3, std::min(error_right[4], delta_lim*3));
-  error_right[5]=std::max(-delta_lim*3, std::min(error_right[5], delta_lim*3));
+  // define orientation error clipping limit
+  const double orientation_delta_lim = delta_lim * 3.0;
+  // calculate the magnitude of the orientation error
+  double orientation_error_magnitude = error_right.tail(3).norm();
+  if (orientation_error_magnitude > orientation_delta_lim) {
+    // scale the orientation error to the orientation_delta_lim
+    error_right.tail(3) *= (orientation_delta_lim / orientation_error_magnitude);
+  }
 
   // compute control
   // allocate variables
