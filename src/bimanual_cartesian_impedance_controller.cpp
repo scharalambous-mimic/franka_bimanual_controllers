@@ -22,6 +22,15 @@
 #include <std_srvs/SetBool.h>
 namespace franka_bimanual_controllers {
 
+template <typename Derived>
+void clipVectorMagnitude(Eigen::MatrixBase<Derived>& vec, const double limit) {
+    const double magnitude = vec.norm();
+    // Only scale the vector if its magnitude is non-zero and exceeds the limit.
+    if (magnitude > limit && magnitude > 0) {
+        vec *= (limit / magnitude);
+    }
+}
+
 bool BiManualCartesianImpedanceControl::initArm(
     hardware_interface::RobotHW* robot_hw,
     const std::string& arm_id,
@@ -320,9 +329,7 @@ void BiManualCartesianImpedanceControl::updateArmLeft() {
   Eigen::Affine3d transform_right(Eigen::Matrix4d::Map(robot_state_right.O_T_EE.data()));
   Eigen::Map<Eigen::Matrix<double, 7, 1>> dq_right(robot_state_right.dq.data());
   Eigen::Vector3d position_right(transform_right.translation());
-  // left_arm_data.position_other_arm_=position_right;
-  // compute error to desired pose
-  // position error
+
   geometry_msgs::PoseStamped msg_left;
   msg_left.pose.position.x=position[0];
   msg_left.pose.position.y=position[1];
@@ -358,21 +365,21 @@ void BiManualCartesianImpedanceControl::updateArmLeft() {
   force_torque_msg.wrench.torque.z=left_arm_data.force_torque[5];
   pub_force_torque_left.publish(force_torque_msg);
 
+  // compute error to desired pose
+  // position error
   Eigen::Matrix<double, 6, 1> error_left;
   error_left.head(3) << position - left_arm_data.position_d_;
+  // clip the position error
+  clipVectorMagnitude(error_left.head(3), delta_lim);
 
-  error_left[0]=std::max(-delta_lim, std::min(error_left[0], delta_lim));
-  error_left[1]=std::max(-delta_lim, std::min(error_left[1], delta_lim));
-  error_left[2]=std::max(-delta_lim, std::min(error_left[2], delta_lim));
 
+  // relative position error
   Eigen::Matrix<double, 6, 1> error_relative;
   error_relative.head(3) << position - position_right;
   error_relative.tail(3).setZero();
   error_relative.head(3)<< error_relative.head(3) -left_arm_data.position_d_relative_;
-
-  error_relative[0]=std::max(-delta_lim, std::min(error_relative[0], delta_lim));
-  error_relative[1]=std::max(-delta_lim, std::min(error_relative[1], delta_lim));
-  error_relative[2]=std::max(-delta_lim, std::min(error_relative[2], delta_lim));
+  // clip the relative position error
+  clipVectorMagnitude(error_relative.head(3), delta_lim);
 
   // orientation error
   if (left_arm_data.orientation_d_.coeffs().dot(orientation.coeffs()) < 0.0) {
@@ -384,11 +391,10 @@ void BiManualCartesianImpedanceControl::updateArmLeft() {
   Eigen::AngleAxisd error_quaternion_angle_axis(error_quaternion);
   // compute "orientation error"
   error_left.tail(3) << error_quaternion_angle_axis.axis() * error_quaternion_angle_axis.angle();
-
-
-  error_left[3]=std::max(-delta_lim*3, std::min(error_left[3], delta_lim*3));
-  error_left[4]=std::max(-delta_lim*3, std::min(error_left[4], delta_lim*3));
-  error_left[5]=std::max(-delta_lim*3, std::min(error_left[5], delta_lim*3));
+  // define orientation error clipping limit
+  const double orientation_delta_lim = delta_lim * 3.0;
+  // clip the orientation error
+  clipVectorMagnitude(error_left.tail(3), orientation_delta_lim);
 
   // compute control
   // allocate variables
@@ -490,15 +496,6 @@ void BiManualCartesianImpedanceControl::updateArmRight() {
   Eigen::Affine3d transform_left(Eigen::Matrix4d::Map(robot_state_left.O_T_EE.data()));
   Eigen::Map<Eigen::Matrix<double, 7, 1>> dq_left(robot_state_left.dq.data());
   Eigen::Vector3d position_left(transform_left.translation());
-  // compute error to desired pose
-  // position error
-  Eigen::Matrix<double, 6, 1> error_right;
-  error_right.head(3) << position - right_arm_data.position_d_;
-
-  error_right[0]=std::max(-delta_lim, std::min(error_right[0], delta_lim));
-  error_right[1]=std::max(-delta_lim, std::min(error_right[1], delta_lim));
-  error_right[2]=std::max(-delta_lim, std::min(error_right[2], delta_lim));
-
 
   geometry_msgs::PoseStamped msg_right;
   msg_right.pose.position.x=position[0];
@@ -534,14 +531,20 @@ void BiManualCartesianImpedanceControl::updateArmRight() {
   force_torque_msg.wrench.torque.z=right_arm_data.force_torque[5];
   pub_force_torque_right.publish(force_torque_msg);
 
+  // compute error to desired pose
+  // position error
+  Eigen::Matrix<double, 6, 1> error_right;
+  error_right.head(3) << position - right_arm_data.position_d_;
+  // clip the position error
+  clipVectorMagnitude(error_right.head(3), delta_lim);
+
+  // relative position error
   Eigen::Matrix<double, 6, 1> error_relative;
   error_relative.head(3) << position - position_left;
   error_relative.tail(3).setZero();
   error_relative.head(3)<< error_relative.head(3) -right_arm_data.position_d_relative_;
-
-  error_relative[0]=std::max(-delta_lim, std::min(error_relative[0], delta_lim));
-  error_relative[1]=std::max(-delta_lim, std::min(error_relative[1], delta_lim));
-  error_relative[2]=std::max(-delta_lim, std::min(error_relative[2], delta_lim));
+  // clip the relative position error
+  clipVectorMagnitude(error_relative.head(3), delta_lim);
   
   // orientation error
   if (right_arm_data.orientation_d_.coeffs().dot(orientation.coeffs()) < 0.0) {
@@ -553,10 +556,11 @@ void BiManualCartesianImpedanceControl::updateArmRight() {
   Eigen::AngleAxisd error_quaternion_angle_axis(error_quaternion);
   // compute "orientation error"
   error_right.tail(3) << error_quaternion_angle_axis.axis() * error_quaternion_angle_axis.angle();
-
-  error_right[3]=std::max(-delta_lim*3, std::min(error_right[3], delta_lim*3));
-  error_right[4]=std::max(-delta_lim*3, std::min(error_right[4], delta_lim*3));
-  error_right[5]=std::max(-delta_lim*3, std::min(error_right[5], delta_lim*3));
+  // define orientation error clipping limit
+  const double orientation_delta_lim = delta_lim * 3.0;
+  // clip the orientation error
+  clipVectorMagnitude(error_right.tail(3), orientation_delta_lim)
+  
 
   // compute control
   // allocate variables
