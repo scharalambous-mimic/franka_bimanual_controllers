@@ -307,6 +307,9 @@ void BiManualCartesianImpedanceControl::updateArmLeft() {
   auto& right_arm_data = arms_data_.at(right_arm_id_);
   franka::RobotState robot_state_left = left_arm_data.state_handle_->getRobotState();
 
+  //JUST FOR DEBUGGING
+  ROS_INFO_THROTTLE(1.0, "Current left arm mode: %d", static_cast<int>(robot_state_left.robot_mode));
+
   if (robot_state_left.robot_mode == franka::RobotMode::kIdle) {
     if (!left_arm_in_error_) {
       ROS_WARN("Left arm entered Idle mode. Triggering automatic error recovery...");
@@ -486,6 +489,9 @@ void BiManualCartesianImpedanceControl::updateArmRight() {
   auto& right_arm_data = arms_data_.at(right_arm_id_);
   // get state variables
   franka::RobotState robot_state_right = right_arm_data.state_handle_->getRobotState();
+
+  //JUST FOR DEBUGGING
+  ROS_INFO_THROTTLE(1.0, "Current left arm mode: %d", static_cast<int>(robot_state_left.robot_mode));
 
   if (robot_state_right.robot_mode == franka::RobotMode::kIdle) {
     if (!right_arm_in_error_) {
