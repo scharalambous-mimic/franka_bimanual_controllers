@@ -549,6 +549,7 @@ void BiManualCartesianImpedanceControl::updateArmRight() {
   if (position_error_magnitude > delta_lim){
     // scale the position error to the delta_lim
     error_right.head(3) *= (delta_lim / position_error_magnitude);
+  }
 
 
   geometry_msgs::PoseStamped msg_right;
