@@ -12,6 +12,7 @@
 #include <franka_bimanual_controllers/pseudo_inversion.h>
 #include <franka_bimanual_controllers/franka_model.h>
 #include <franka_hw/trigger_rate.h>
+#include <franka_msgs/ErrorRecoveryActionGoal.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <pluginlib/class_list_macros.h>
 #include <ros/ros.h>
@@ -491,7 +492,7 @@ void BiManualCartesianImpedanceControl::updateArmRight() {
   franka::RobotState robot_state_right = right_arm_data.state_handle_->getRobotState();
 
   //JUST FOR DEBUGGING
-  ROS_INFO_THROTTLE(1.0, "Current left arm mode: %d", static_cast<int>(robot_state_left.robot_mode));
+  ROS_INFO_THROTTLE(1.0, "Current right arm mode: %d", static_cast<int>(robot_state_right.robot_mode));
 
   if (robot_state_right.robot_mode == franka::RobotMode::kIdle) {
     if (!right_arm_in_error_) {
