@@ -24,7 +24,7 @@
 namespace franka_bimanual_controllers {
 
 template <typename Derived>
-void clipVectorMagnitude(Eigen::Ref<Derived> vec, const double limit) {
+void clipVectorMagnitude(Eigen::MatrixBase<Derived>& vec, const double limit) {
     const double magnitude = vec.norm();
     // Only scale the vector if its magnitude is non-zero and exceeds the limit.
     if (magnitude > limit && magnitude > 0) {
@@ -597,7 +597,7 @@ void BiManualCartesianImpedanceControl::updateArmRight() {
   // define orientation error clipping limit
   const double orientation_delta_lim = delta_lim * 3.0;
   // clip the orientation error
-  clipVectorMagnitude(error_right.tail(3), orientation_delta_lim);
+  clipVectorMagnitude(error_right.tail(3), orientation_delta_lim)
   
 
   // compute control
