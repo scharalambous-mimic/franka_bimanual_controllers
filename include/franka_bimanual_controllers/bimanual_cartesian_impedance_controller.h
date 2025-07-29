@@ -29,6 +29,13 @@
 
 namespace franka_bimanual_controllers {
 
+// State machine
+enum ControllerState {
+  NORMAL_OPERATION,
+  COLLISION_DETECTED,
+  RECOVERY_PENDING
+};
+
 /**
  * This container holds all data and parameters used to control one panda arm with a Cartesian
  * impedance control law tracking a desired target pose.
@@ -102,10 +109,6 @@ class BiManualCartesianImpedanceControl
  private:
   // Publisher for automatic error recovery
   ros::Publisher pub_error_recovery_;
-
-  // Flags to track if arms are in an error state
-  bool left_arm_in_error_{false};
-  bool right_arm_in_error_{false};
 
   std::map<std::string, FrankaDataContainer>
       arms_data_;             ///< Holds all relevant data for both arms.
@@ -218,6 +221,20 @@ class BiManualCartesianImpedanceControl
   double joint_limits[7][2];
   double calculateTauJointLimit(double q_value, double threshold, double magnitude, double upper_bound, double lower_bound);
 
+  ControllerState controller_state_{NORMAL_OPERATION};
+  franka::RobotMode prev_robot_mode_left_{franka::RobotMode::kOther};
+  franka::RobotMode prev_robot_mode_right_{franka::RobotMode::kOther};
+
+  struct FrozenPose {
+    Eigen::Vector3d position_d;
+    Eigen::Quaterniond orientation_d;
+    Eigen::Vector3d position_d_relative;
+    Eigen::Matrix<double, 7, 1> q_d_nullspace;
+  };
+  FrozenPose frozen_pose_left_;
+  FrozenPose frozen_pose_right_;
+  
+  void freezeDesiredPoses();
 
 };
 
