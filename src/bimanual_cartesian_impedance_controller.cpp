@@ -158,6 +158,9 @@ bool BiManualCartesianImpedanceControl::init(hardware_interface::RobotHW* robot_
   pub_force_torque_right= node_handle.advertise<geometry_msgs::WrenchStamped>("/force_torque_right_ext",1);
   pub_force_torque_left= node_handle.advertise<geometry_msgs::WrenchStamped>("/force_torque_left_ext",1);
 
+  pub_robot_mode_left_ = node_handle.advertise<std_msgs::Int32>("panda_left_robot_mode", 1);
+  pub_robot_mode_right_ = node_handle.advertise<std_msgs::Int32>("panda_right_robot_mode", 1);
+
   pub_error_recovery_ = node_handle.advertise<franka_msgs::ErrorRecoveryActionGoal>("/panda_dual/error_recovery/goal", 1, true);
 
   dynamic_reconfigure_compliance_param_node_ =
@@ -257,6 +260,14 @@ void BiManualCartesianImpedanceControl::update(const ros::Time& time,
   // Get current robot states
   franka::RobotState robot_state_left = arms_data_.at(left_arm_id_).state_handle_->getRobotState();
   franka::RobotState robot_state_right = arms_data_.at(right_arm_id_).state_handle_->getRobotState();
+
+  std_msgs::Int32 left_mode_msg;
+  left_mode_msg.data = static_cast<int>(robot_state_left.robot_mode);
+  pub_robot_mode_left_.publish(left_mode_msg);
+
+  std_msgs::Int32 right_mode_msg;
+  right_mode_msg.data = static_cast<int>(robot_state_right.robot_mode);
+  pub_robot_mode_right_.publish(right_mode_msg);
 
   // e-stop recovery check
   bool left_needs_recovery = (prev_robot_mode_left_ == franka::RobotMode::kUserStopped && robot_state_left.robot_mode == franka::RobotMode::kIdle);
