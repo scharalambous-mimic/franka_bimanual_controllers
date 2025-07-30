@@ -104,7 +104,8 @@ class BiManualCartesianImpedanceControl
  private:
   // Publisher for automatic error recovery
   ros::Publisher pub_error_recovery_;
-
+  bool left_needs_recovery_ = false;
+  bool right_needs_recovery_ = false;
   std::map<std::string, FrankaDataContainer>
       arms_data_;             ///< Holds all relevant data for both arms.
   std::string left_arm_id_;   ///< Name of the left arm, retrieved from the parameter server.
