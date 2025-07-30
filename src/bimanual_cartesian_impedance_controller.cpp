@@ -270,10 +270,15 @@ void BiManualCartesianImpedanceControl::update(const ros::Time& time,
   pub_robot_mode_right_.publish(right_mode_msg);
 
   // e-stop recovery check
-  bool left_needs_recovery = (prev_robot_mode_left_ == franka::RobotMode::kUserStopped && robot_state_left.robot_mode == franka::RobotMode::kIdle);
-  bool right_needs_recovery = (prev_robot_mode_right_ == franka::RobotMode::kUserStopped && robot_state_right.robot_mode == franka::RobotMode::kIdle);
+  if (!left_needs_recovery_ && prev_robot_mode_left_ == franka::RobotMode::kUserStopped && robot_state_left.robot_mode == franka::RobotMode::kIdle) {
+    left_needs_recovery_ = true;
+  }
 
-  if (left_needs_recovery || right_needs_recovery) {
+  if (!right_needs_recovery_ && prev_robot_mode_right_ == franka::RobotMode::kUserStopped && robot_state_right.robot_mode == franka::RobotMode::kIdle) {
+    right_needs_recovery_ = true;
+  }
+  
+  if (left_needs_recovery && right_needs_recovery) {
     ROS_INFO("E-Stop cycle detected. Triggering automatic error recovery.");
     franka_msgs::ErrorRecoveryActionGoal goal_msg;
     pub_error_recovery_.publish(goal_msg);
@@ -282,6 +287,8 @@ void BiManualCartesianImpedanceControl::update(const ros::Time& time,
     if (controller_state_ == controller_interface::ControllerBase::ControllerState::STOPPED) {
       controller_state_ = controller_interface::ControllerBase::ControllerState::WAITING;
     }
+    left_needs_recovery_ = false;
+    right_needs_recovery_ = false;
   }
 
   switch (controller_state_) {
