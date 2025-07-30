@@ -278,7 +278,7 @@ void BiManualCartesianImpedanceControl::update(const ros::Time& time,
     right_needs_recovery_ = true;
   }
   
-  if (left_needs_recovery && right_needs_recovery) {
+  if (left_needs_recovery_ && right_needs_recovery_) {
     ROS_INFO("E-Stop cycle detected. Triggering automatic error recovery.");
     franka_msgs::ErrorRecoveryActionGoal goal_msg;
     pub_error_recovery_.publish(goal_msg);
