@@ -29,12 +29,6 @@
 
 namespace franka_bimanual_controllers {
 
-// State machine
-enum ControllerState {
-  NORMAL_OPERATION,
-  COLLISION_DETECTED,
-  RECOVERY_PENDING
-};
 
 /**
  * This container holds all data and parameters used to control one panda arm with a Cartesian
