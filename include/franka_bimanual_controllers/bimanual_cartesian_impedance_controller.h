@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include <controller_interface/controller_base.h>
 #include <controller_interface/multi_interface_controller.h>
 #include <dynamic_reconfigure/server.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -218,7 +219,7 @@ class BiManualCartesianImpedanceControl
   double joint_limits[7][2];
   double calculateTauJointLimit(double q_value, double threshold, double magnitude, double upper_bound, double lower_bound);
 
-  ControllerState controller_state_{NORMAL_OPERATION};
+  ControllerState controller_state_{controller_interface::ControllerBase::ControllerState::RUNNING};
   franka::RobotMode prev_robot_mode_left_{franka::RobotMode::kOther};
   franka::RobotMode prev_robot_mode_right_{franka::RobotMode::kOther};
 
