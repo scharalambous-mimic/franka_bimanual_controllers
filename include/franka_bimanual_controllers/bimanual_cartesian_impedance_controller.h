@@ -219,7 +219,7 @@ class BiManualCartesianImpedanceControl
   double joint_limits[7][2];
   double calculateTauJointLimit(double q_value, double threshold, double magnitude, double upper_bound, double lower_bound);
 
-  ControllerState controller_state_{controller_interface::ControllerBase::ControllerState::RUNNING};
+  controller_interface::ControllerBase::ControllerState  controller_state_{controller_interface::ControllerBase::ControllerState::RUNNING};
   franka::RobotMode prev_robot_mode_left_{franka::RobotMode::kOther};
   franka::RobotMode prev_robot_mode_right_{franka::RobotMode::kOther};
 
