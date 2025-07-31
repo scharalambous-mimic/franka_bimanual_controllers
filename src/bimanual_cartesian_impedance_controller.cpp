@@ -200,21 +200,22 @@ bool BiManualCartesianImpedanceControl::init(hardware_interface::RobotHW* robot_
    // Subscribe to heartbeat topic
    heartbeat_sub_ = node_handle.subscribe(
        "collision_detection_heartbeat", 1, &BiManualCartesianImpedanceControl::heartbeatCallback, this);
+  // store initial state
+  franka::RobotState initial_state_left = arms_data_.at(left_arm_id_).state_handle_->getRobotState();
+  prev_robot_mode_left_ = initial_state_left.robot_mode;
 
-   return left_success && right_success;
+  franka::RobotState initial_state_right = arms_data_.at(right_arm_id_).state_handle_->getRobotState();
+  prev_robot_mode_right_ = initial_state_right.robot_mode;
+  
+  // initialize controller state
+  controller_state_ = controller_interface::ControllerBase::ControllerState::RUNNING;
+
+  return left_success && right_success;
 }
 
 void BiManualCartesianImpedanceControl::starting(const ros::Time& time) {
 startingArmLeft();
 startingArmRight();
-
-franka::RobotState initial_state_left = arms_data_.at(left_arm_id_).state_handle_->getRobotState();
-prev_robot_mode_left_ = initial_state_left.robot_mode;
-
-franka::RobotState initial_state_right = arms_data_.at(right_arm_id_).state_handle_->getRobotState();
-prev_robot_mode_right_ = initial_state_right.robot_mode;
-
-controller_state_ = controller_interface::ControllerBase::ControllerState::RUNNING;
 
 {
  std::lock_guard<std::mutex> lock(heartbeat_mutex_);
