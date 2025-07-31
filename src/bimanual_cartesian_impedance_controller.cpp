@@ -246,11 +246,6 @@ void BiManualCartesianImpedanceControl::update(const ros::Time& time,
         }
       }
     }
- 
-  // if (!is_safe_.load()) { // atomic read
-  //    // Throw an error
-  //    throw std::runtime_error("Controller is not safe. Exiting update loop.");
-  //  }
 
   if (!is_safe_.load() && controller_state_ == controller_interface::ControllerBase::ControllerState::RUNNING) {
         controller_state_ = controller_interface::ControllerBase::ControllerState::STOPPED;
@@ -315,6 +310,7 @@ void BiManualCartesianImpedanceControl::update(const ros::Time& time,
       }
       break;
     case controller_interface::ControllerBase::ControllerState::RUNNING:
+      break;
     case controller_interface::ControllerBase::ControllerState::STOPPED:
       break;
   }
