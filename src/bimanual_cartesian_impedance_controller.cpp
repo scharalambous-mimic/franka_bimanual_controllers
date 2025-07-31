@@ -182,7 +182,7 @@ bool BiManualCartesianImpedanceControl::init(hardware_interface::RobotHW* robot_
           std::string param_name = "/joint" + std::to_string(i + 1) + "/limit/" + limit_type;
           if (!node_handle.getParam(param_name, joint_limits[i][limit_type == "lower" ? 0 : 1])) {
               ROS_ERROR("Failed to retrieve parameter: %s", param_name.c_str());
-              return 1;
+              return false;
           }
       }
   }
@@ -340,8 +340,6 @@ void BiManualCartesianImpedanceControl::startingArmLeft() {
   // set target point to current state
   left_arm_data.position_d_ = initial_transform.translation();
   left_arm_data.orientation_d_ = Eigen::Quaterniond(initial_transform.linear());
-  left_arm_data.position_d_ = initial_transform.translation();
-  left_arm_data.orientation_d_ = Eigen::Quaterniond(initial_transform.linear());
 
   // set nullspace target configuration to initial q
   left_arm_data.q_d_nullspace_ = q_initial;
@@ -363,8 +361,6 @@ void BiManualCartesianImpedanceControl::startingArmRight() {
   Eigen::Affine3d initial_transform(Eigen::Matrix4d::Map(initial_state.O_T_EE.data()));
 
   // set target point to current state
-  right_arm_data.position_d_ = initial_transform.translation();
-  right_arm_data.orientation_d_ = Eigen::Quaterniond(initial_transform.linear());
   right_arm_data.position_d_ = initial_transform.translation();
   right_arm_data.orientation_d_ = Eigen::Quaterniond(initial_transform.linear());
 
