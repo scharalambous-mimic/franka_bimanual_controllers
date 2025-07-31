@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include <controller_interface/controller_base.h>
 #include <controller_interface/multi_interface_controller.h>
 #include <dynamic_reconfigure/server.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -28,6 +29,7 @@
 #include <std_msgs/Header.h>
 
 namespace franka_bimanual_controllers {
+
 
 /**
  * This container holds all data and parameters used to control one panda arm with a Cartesian
@@ -100,6 +102,10 @@ class BiManualCartesianImpedanceControl
   void update(const ros::Time&, const ros::Duration& period) override;
 
  private:
+  // Publisher for automatic error recovery
+  ros::Publisher pub_error_recovery_;
+  bool left_needs_recovery_ = false;
+  bool right_needs_recovery_ = false;
   std::map<std::string, FrankaDataContainer>
       arms_data_;             ///< Holds all relevant data for both arms.
   std::string left_arm_id_;   ///< Name of the left arm, retrieved from the parameter server.
@@ -208,9 +214,26 @@ class BiManualCartesianImpedanceControl
   ros::Publisher pub_force_torque_right;
   ros::Publisher pub_force_torque_left;
 
+  ros::Publisher pub_robot_mode_left_;
+  ros::Publisher pub_robot_mode_right_;
+
   double joint_limits[7][2];
   double calculateTauJointLimit(double q_value, double threshold, double magnitude, double upper_bound, double lower_bound);
 
+  controller_interface::ControllerBase::ControllerState  controller_state_{controller_interface::ControllerBase::ControllerState::STOPPED};
+  franka::RobotMode prev_robot_mode_left_{franka::RobotMode::kOther};
+  franka::RobotMode prev_robot_mode_right_{franka::RobotMode::kOther};
+
+  struct FrozenPose {
+    Eigen::Vector3d position_d;
+    Eigen::Quaterniond orientation_d;
+    Eigen::Vector3d position_d_relative;
+    Eigen::Matrix<double, 7, 1> q_d_nullspace;
+  };
+  FrozenPose frozen_pose_left_;
+  FrozenPose frozen_pose_right_;
+  
+  void freezeDesiredPoses();
 
 };
 

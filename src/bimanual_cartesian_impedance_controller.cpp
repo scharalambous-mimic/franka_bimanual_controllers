@@ -6,12 +6,12 @@
 #include <functional>
 #include <memory>
 
-#include <controller_interface/controller_base.h>
 #include <eigen_conversions/eigen_msg.h>
 #include <franka/robot_state.h>
 #include <franka_bimanual_controllers/pseudo_inversion.h>
 #include <franka_bimanual_controllers/franka_model.h>
 #include <franka_hw/trigger_rate.h>
+#include <franka_msgs/ErrorRecoveryActionGoal.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <pluginlib/class_list_macros.h>
 #include <ros/ros.h>
@@ -20,16 +20,8 @@
 #include <tf_conversions/tf_eigen.h>
 #include "sensor_msgs/JointState.h"
 #include <std_srvs/SetBool.h>
+#include "std_msgs/Int32.h"
 namespace franka_bimanual_controllers {
-
-template <typename Derived>
-void clipVectorMagnitude(Eigen::MatrixBase<Derived>& vec, const double limit) {
-    const double magnitude = vec.norm();
-    // Only scale the vector if its magnitude is non-zero and exceeds the limit.
-    if (magnitude > limit && magnitude > 0) {
-        vec *= (limit / magnitude);
-    }
-}
 
 bool BiManualCartesianImpedanceControl::initArm(
     hardware_interface::RobotHW* robot_hw,
@@ -166,6 +158,10 @@ bool BiManualCartesianImpedanceControl::init(hardware_interface::RobotHW* robot_
   pub_force_torque_right= node_handle.advertise<geometry_msgs::WrenchStamped>("/force_torque_right_ext",1);
   pub_force_torque_left= node_handle.advertise<geometry_msgs::WrenchStamped>("/force_torque_left_ext",1);
 
+  pub_robot_mode_left_ = node_handle.advertise<std_msgs::Int32>("panda_left_robot_mode", 1);
+  pub_robot_mode_right_ = node_handle.advertise<std_msgs::Int32>("panda_right_robot_mode", 1);
+
+  pub_error_recovery_ = node_handle.advertise<franka_msgs::ErrorRecoveryActionGoal>("/panda_dual/error_recovery/goal", 1, true);
 
   dynamic_reconfigure_compliance_param_node_ =
       ros::NodeHandle("dynamic_reconfigure_compliance_param_node");
@@ -186,7 +182,7 @@ bool BiManualCartesianImpedanceControl::init(hardware_interface::RobotHW* robot_
           std::string param_name = "/joint" + std::to_string(i + 1) + "/limit/" + limit_type;
           if (!node_handle.getParam(param_name, joint_limits[i][limit_type == "lower" ? 0 : 1])) {
               ROS_ERROR("Failed to retrieve parameter: %s", param_name.c_str());
-              return 1;
+              return false;
           }
       }
   }
@@ -204,13 +200,23 @@ bool BiManualCartesianImpedanceControl::init(hardware_interface::RobotHW* robot_
    // Subscribe to heartbeat topic
    heartbeat_sub_ = node_handle.subscribe(
        "collision_detection_heartbeat", 1, &BiManualCartesianImpedanceControl::heartbeatCallback, this);
+  // store initial state
+  franka::RobotState initial_state_left = arms_data_.at(left_arm_id_).state_handle_->getRobotState();
+  prev_robot_mode_left_ = initial_state_left.robot_mode;
 
-   return left_success && right_success;
+  franka::RobotState initial_state_right = arms_data_.at(right_arm_id_).state_handle_->getRobotState();
+  prev_robot_mode_right_ = initial_state_right.robot_mode;
+  
+  // initialize controller state
+  controller_state_ = controller_interface::ControllerBase::ControllerState::RUNNING;
+
+  return left_success && right_success;
 }
 
 void BiManualCartesianImpedanceControl::starting(const ros::Time& time) {
 startingArmLeft();
 startingArmRight();
+
 {
  std::lock_guard<std::mutex> lock(heartbeat_mutex_);
  last_heartbeat_time_ = time;
@@ -240,14 +246,80 @@ void BiManualCartesianImpedanceControl::update(const ros::Time& time,
         }
       }
     }
- 
-  if (!is_safe_.load()) { // atomic read
-     // Throw an error
-     throw std::runtime_error("Controller is not safe. Exiting update loop.");
-   }
+
+  if (!is_safe_.load() && controller_state_ == controller_interface::ControllerBase::ControllerState::RUNNING) {
+        controller_state_ = controller_interface::ControllerBase::ControllerState::STOPPED;
+        freezeDesiredPoses();
+        ROS_INFO("Collision detected! Freezing current pose. Recycle e-stops and move arms into a non collision config to continue operation.");
+  }
+
+  // Get current robot states
+  franka::RobotState robot_state_left = arms_data_.at(left_arm_id_).state_handle_->getRobotState();
+  franka::RobotState robot_state_right = arms_data_.at(right_arm_id_).state_handle_->getRobotState();
+
+  std_msgs::Int32 left_mode_msg;
+  left_mode_msg.data = static_cast<int>(robot_state_left.robot_mode);
+  pub_robot_mode_left_.publish(left_mode_msg);
+
+  std_msgs::Int32 right_mode_msg;
+  right_mode_msg.data = static_cast<int>(robot_state_right.robot_mode);
+  pub_robot_mode_right_.publish(right_mode_msg);
+
+  // e-stop recovery check
+  if (!left_needs_recovery_ && prev_robot_mode_left_ == franka::RobotMode::kUserStopped && robot_state_left.robot_mode == franka::RobotMode::kIdle) {
+    left_needs_recovery_ = true;
+  }
+
+  if (!right_needs_recovery_ && prev_robot_mode_right_ == franka::RobotMode::kUserStopped && robot_state_right.robot_mode == franka::RobotMode::kIdle) {
+    right_needs_recovery_ = true;
+  }
+  
+  if (left_needs_recovery_ && right_needs_recovery_) {
+    ROS_INFO("E-Stop cycle detected. Triggering automatic error recovery.");
+    franka_msgs::ErrorRecoveryActionGoal goal_msg;
+    pub_error_recovery_.publish(goal_msg);
+
+    // if  collision had occurred, we now enter a pending state to wait for recovery to finish.
+    if (controller_state_ == controller_interface::ControllerBase::ControllerState::STOPPED) {
+      controller_state_ = controller_interface::ControllerBase::ControllerState::WAITING;
+    }
+    left_needs_recovery_ = false;
+    right_needs_recovery_ = false;
+  }
+
+  switch (controller_state_) {
+    case controller_interface::ControllerBase::ControllerState::WAITING:
+      // Check if both arms are active again after the recovery action was sent
+      if (robot_state_left.robot_mode != franka::RobotMode::kIdle && robot_state_left.robot_mode != franka::RobotMode::kUserStopped &&
+          robot_state_right.robot_mode != franka::RobotMode::kIdle && robot_state_right.robot_mode != franka::RobotMode::kUserStopped) {
+            
+            ROS_INFO("Both arms recovered after collision event. Resuming RUNNING.");
+            controller_state_ = controller_interface::ControllerBase::ControllerState::RUNNING;
+            is_safe_.store(true); // Safety is restored
+
+            // set desired pose to current actual pose to prevent any initial movement.
+            auto& left_arm_data = arms_data_.at(left_arm_id_);
+            Eigen::Affine3d tf_left(Eigen::Matrix4d::Map(robot_state_left.O_T_EE.data()));
+            left_arm_data.position_d_ = tf_left.translation();
+            left_arm_data.orientation_d_ = Eigen::Quaterniond(tf_left.linear());
+    
+            auto& right_arm_data = arms_data_.at(right_arm_id_);
+            Eigen::Affine3d tf_right(Eigen::Matrix4d::Map(robot_state_right.O_T_EE.data()));
+            right_arm_data.position_d_ = tf_right.translation();
+            right_arm_data.orientation_d_ = Eigen::Quaterniond(tf_right.linear());
+      }
+      break;
+    case controller_interface::ControllerBase::ControllerState::RUNNING:
+      break;
+    case controller_interface::ControllerBase::ControllerState::STOPPED:
+      break;
+  }
+
 
   updateArmLeft();
   updateArmRight();
+  prev_robot_mode_left_ = robot_state_left.robot_mode;
+  prev_robot_mode_right_ = robot_state_right.robot_mode;
 }
 
 void BiManualCartesianImpedanceControl::startingArmLeft() {
@@ -266,8 +338,6 @@ void BiManualCartesianImpedanceControl::startingArmLeft() {
   Eigen::Affine3d initial_transform(Eigen::Matrix4d::Map(initial_state.O_T_EE.data()));
 
   // set target point to current state
-  left_arm_data.position_d_ = initial_transform.translation();
-  left_arm_data.orientation_d_ = Eigen::Quaterniond(initial_transform.linear());
   left_arm_data.position_d_ = initial_transform.translation();
   left_arm_data.orientation_d_ = Eigen::Quaterniond(initial_transform.linear());
 
@@ -293,8 +363,6 @@ void BiManualCartesianImpedanceControl::startingArmRight() {
   // set target point to current state
   right_arm_data.position_d_ = initial_transform.translation();
   right_arm_data.orientation_d_ = Eigen::Quaterniond(initial_transform.linear());
-  right_arm_data.position_d_ = initial_transform.translation();
-  right_arm_data.orientation_d_ = Eigen::Quaterniond(initial_transform.linear());
 
   // set nullspace target configuration to initial q
   right_arm_data.q_d_nullspace_ = q_initial;
@@ -305,6 +373,28 @@ void BiManualCartesianImpedanceControl::updateArmLeft() {
   auto& left_arm_data = arms_data_.at(left_arm_id_);
   auto& right_arm_data = arms_data_.at(right_arm_id_);
   franka::RobotState robot_state_left = left_arm_data.state_handle_->getRobotState();
+
+  //JUST FOR DEBUGGING
+  ROS_INFO_THROTTLE(1.0, "Current left arm mode: %d", static_cast<int>(robot_state_left.robot_mode));
+
+
+  Eigen::Vector3d position_d_target;
+  Eigen::Quaterniond orientation_d_target;
+  Eigen::Vector3d position_d_relative_target;
+  Eigen::Matrix<double, 7, 1> q_d_nullspace_target;
+
+  if (controller_state_ == controller_interface::ControllerBase::ControllerState::RUNNING) {
+      position_d_target = left_arm_data.position_d_;
+      orientation_d_target = left_arm_data.orientation_d_;
+      position_d_relative_target = left_arm_data.position_d_relative_;
+      q_d_nullspace_target = left_arm_data.q_d_nullspace_;
+  } else { // STOPPED or WAITING, use frozen poses
+      position_d_target = frozen_pose_left_.position_d;
+      orientation_d_target = frozen_pose_left_.orientation_d;
+      position_d_relative_target = frozen_pose_left_.position_d_relative;
+      q_d_nullspace_target = frozen_pose_left_.q_d_nullspace;
+  }
+
   std::array<double, 49> inertia_array = left_arm_data.model_handle_->getMass();
   std::array<double, 7> coriolis_array = left_arm_data.model_handle_->getCoriolis();
   std::array<double, 42> jacobian_array =
@@ -329,7 +419,9 @@ void BiManualCartesianImpedanceControl::updateArmLeft() {
   Eigen::Affine3d transform_right(Eigen::Matrix4d::Map(robot_state_right.O_T_EE.data()));
   Eigen::Map<Eigen::Matrix<double, 7, 1>> dq_right(robot_state_right.dq.data());
   Eigen::Vector3d position_right(transform_right.translation());
-
+  // left_arm_data.position_other_arm_=position_right;
+  // compute error to desired pose
+  // position error
   geometry_msgs::PoseStamped msg_left;
   msg_left.pose.position.x=position[0];
   msg_left.pose.position.y=position[1];
@@ -365,36 +457,48 @@ void BiManualCartesianImpedanceControl::updateArmLeft() {
   force_torque_msg.wrench.torque.z=left_arm_data.force_torque[5];
   pub_force_torque_left.publish(force_torque_msg);
 
-  // compute error to desired pose
-  // position error
   Eigen::Matrix<double, 6, 1> error_left;
-  error_left.head(3) << position - left_arm_data.position_d_;
-  // clip the position error
-  clipVectorMagnitude(error_left.head(3), delta_lim);
+  error_left.head(3) << position - position_d_target;
 
+  // calculate the magnitude of the position error
+  double position_error_magnitude = error_left.head(3).norm();
+  if (position_error_magnitude > delta_lim){
+    // scale the position error to the delta_lim
+    error_left.head(3) *= (delta_lim / position_error_magnitude);
+  }
 
-  // relative position error
   Eigen::Matrix<double, 6, 1> error_relative;
   error_relative.head(3) << position - position_right;
   error_relative.tail(3).setZero();
-  error_relative.head(3)<< error_relative.head(3) -left_arm_data.position_d_relative_;
-  // clip the relative position error
-  clipVectorMagnitude(error_relative.head(3), delta_lim);
+  error_relative.head(3)<< error_relative.head(3) -position_d_relative_target;
+
+  // calculate the magnitude of the relative position error
+  double relative_error_magnitude = error_relative.head(3).norm();
+  if (relative_error_magnitude > delta_lim){
+    // scale the relative position error to the delta_lim
+    error_relative.head(3) *= (delta_lim / relative_error_magnitude);
+  }
 
   // orientation error
-  if (left_arm_data.orientation_d_.coeffs().dot(orientation.coeffs()) < 0.0) {
+  if (orientation_d_target.coeffs().dot(orientation.coeffs()) < 0.0) {
     orientation.coeffs() << -orientation.coeffs();
   }
   // "difference" quaternion
-  Eigen::Quaterniond error_quaternion(orientation * left_arm_data.orientation_d_.inverse());
+  Eigen::Quaterniond error_quaternion(orientation * orientation_d_target.inverse());
   // convert to axis angle
   Eigen::AngleAxisd error_quaternion_angle_axis(error_quaternion);
   // compute "orientation error"
   error_left.tail(3) << error_quaternion_angle_axis.axis() * error_quaternion_angle_axis.angle();
+
+
   // define orientation error clipping limit
   const double orientation_delta_lim = delta_lim * 3.0;
-  // clip the orientation error
-  clipVectorMagnitude(error_left.tail(3), orientation_delta_lim);
+  // calculate the magnitude of the orientation error
+  double orientation_error_magnitude = error_left.tail(3).norm();
+  if (orientation_error_magnitude > orientation_delta_lim) {
+    // scale the orientation error to the orientation_delta_lim
+    error_left.tail(3) *= (orientation_delta_lim / orientation_error_magnitude);
+  }
 
   // compute control
   // allocate variables
@@ -408,13 +512,13 @@ void BiManualCartesianImpedanceControl::updateArmLeft() {
   // pseudoinverse for nullspace handling
   // kinematic pseuoinverse
   null_space_error.setZero();
-  null_space_error(0)=(left_arm_data.q_d_nullspace_(0) - q(0));
-  null_space_error(1)=(left_arm_data.q_d_nullspace_(1) - q(1));
-  null_space_error(2)=(left_arm_data.q_d_nullspace_(2) - q(2));
-  null_space_error(3)=(left_arm_data.q_d_nullspace_(3) - q(3));
-  null_space_error(4)=(left_arm_data.q_d_nullspace_(4) - q(4));
-  null_space_error(5)=(left_arm_data.q_d_nullspace_(5) - q(5));
-  null_space_error(6)=(left_arm_data.q_d_nullspace_(6) - q(6));
+  null_space_error(0)=(q_d_nullspace_target(0) - q(0));
+  null_space_error(1)=(q_d_nullspace_target(1) - q(1));
+  null_space_error(2)=(q_d_nullspace_target(2) - q(2));
+  null_space_error(3)=(q_d_nullspace_target(3) - q(3));
+  null_space_error(4)=(q_d_nullspace_target(4) - q(4));
+  null_space_error(5)=(q_d_nullspace_target(5) - q(5));
+  null_space_error(6)=(q_d_nullspace_target(6) - q(6));
   // Cartesian PD control with damping ratio = 1
   tau_task << jacobian.transpose() * (-left_arm_data.cartesian_stiffness_ * error_left -
                                       left_arm_data.cartesian_damping_ * (jacobian * dq)); 
@@ -470,6 +574,28 @@ void BiManualCartesianImpedanceControl::updateArmRight() {
   auto& right_arm_data = arms_data_.at(right_arm_id_);
   // get state variables
   franka::RobotState robot_state_right = right_arm_data.state_handle_->getRobotState();
+
+  //JUST FOR DEBUGGING
+  ROS_INFO_THROTTLE(1.0, "Current right arm mode: %d", static_cast<int>(robot_state_right.robot_mode));
+
+  Eigen::Vector3d position_d_target;
+  Eigen::Quaterniond orientation_d_target;
+  Eigen::Vector3d position_d_relative_target;
+  Eigen::Matrix<double, 7, 1> q_d_nullspace_target;
+
+  if (controller_state_ == controller_interface::ControllerBase::ControllerState::RUNNING) {
+      position_d_target = right_arm_data.position_d_;
+      orientation_d_target = right_arm_data.orientation_d_;
+      position_d_relative_target = right_arm_data.position_d_relative_;
+      q_d_nullspace_target = right_arm_data.q_d_nullspace_;
+  } else { // STOPPED or WAITING, use frozen poses
+      position_d_target = frozen_pose_right_.position_d;
+      orientation_d_target = frozen_pose_right_.orientation_d;
+      position_d_relative_target = frozen_pose_right_.position_d_relative;
+      q_d_nullspace_target = frozen_pose_right_.q_d_nullspace;
+  }
+
+
   std::array<double, 49> inertia_array = right_arm_data.model_handle_->getMass();
   std::array<double, 7> coriolis_array = right_arm_data.model_handle_->getCoriolis();
   std::array<double, 42> jacobian_array =
@@ -496,6 +622,18 @@ void BiManualCartesianImpedanceControl::updateArmRight() {
   Eigen::Affine3d transform_left(Eigen::Matrix4d::Map(robot_state_left.O_T_EE.data()));
   Eigen::Map<Eigen::Matrix<double, 7, 1>> dq_left(robot_state_left.dq.data());
   Eigen::Vector3d position_left(transform_left.translation());
+  // compute error to desired pose
+  // position error
+  Eigen::Matrix<double, 6, 1> error_right;
+  error_right.head(3) << position - position_d_target;
+
+  // calculate the magnitude of the position error
+  double position_error_magnitude = error_right.head(3).norm();
+  if (position_error_magnitude > delta_lim){
+    // scale the position error to the delta_lim
+    error_right.head(3) *= (delta_lim / position_error_magnitude);
+  }
+
 
   geometry_msgs::PoseStamped msg_right;
   msg_right.pose.position.x=position[0];
@@ -531,49 +669,50 @@ void BiManualCartesianImpedanceControl::updateArmRight() {
   force_torque_msg.wrench.torque.z=right_arm_data.force_torque[5];
   pub_force_torque_right.publish(force_torque_msg);
 
-  // compute error to desired pose
-  // position error
-  Eigen::Matrix<double, 6, 1> error_right;
-  error_right.head(3) << position - right_arm_data.position_d_;
-  // clip the position error
-  clipVectorMagnitude(error_right.head(3), delta_lim);
-
-  // relative position error
   Eigen::Matrix<double, 6, 1> error_relative;
   error_relative.head(3) << position - position_left;
   error_relative.tail(3).setZero();
-  error_relative.head(3)<< error_relative.head(3) -right_arm_data.position_d_relative_;
-  // clip the relative position error
-  clipVectorMagnitude(error_relative.head(3), delta_lim);
+  error_relative.head(3)<< error_relative.head(3) -position_d_relative_target;
+
+  // calculate the magnitude of the relative position error
+  double relative_error_magnitude = error_relative.head(3).norm();
+  if (relative_error_magnitude > delta_lim){
+    // scale the relative position error to the delta_lim
+    error_relative.head(3) *= (delta_lim / relative_error_magnitude);
+  }
   
   // orientation error
-  if (right_arm_data.orientation_d_.coeffs().dot(orientation.coeffs()) < 0.0) {
+  if (orientation_d_target.coeffs().dot(orientation.coeffs()) < 0.0) {
     orientation.coeffs() << -orientation.coeffs();
   }
   // "difference" quaternion
-  Eigen::Quaterniond error_quaternion(orientation * right_arm_data.orientation_d_.inverse());
+  Eigen::Quaterniond error_quaternion(orientation * orientation_d_target.inverse());
   // convert to axis angle
   Eigen::AngleAxisd error_quaternion_angle_axis(error_quaternion);
   // compute "orientation error"
   error_right.tail(3) << error_quaternion_angle_axis.axis() * error_quaternion_angle_axis.angle();
+
   // define orientation error clipping limit
   const double orientation_delta_lim = delta_lim * 3.0;
-  // clip the orientation error
-  clipVectorMagnitude(error_right.tail(3), orientation_delta_lim)
-  
+  // calculate the magnitude of the orientation error
+  double orientation_error_magnitude = error_right.tail(3).norm();
+  if (orientation_error_magnitude > orientation_delta_lim) {
+    // scale the orientation error to the orientation_delta_lim
+    error_right.tail(3) *= (orientation_delta_lim / orientation_error_magnitude);
+  }
 
   // compute control
   // allocate variables
   Eigen::VectorXd tau_task(7), tau_nullspace_right(7), tau_d(7), tau_joint_limit(7), null_space_error(7), tau_relative(7);
 
   null_space_error.setZero();
-  null_space_error(0)=(right_arm_data.q_d_nullspace_(0) - q(0));
-  null_space_error(1)=(right_arm_data.q_d_nullspace_(1) - q(1));
-  null_space_error(2)=(right_arm_data.q_d_nullspace_(2) - q(2));
-  null_space_error(3)=(right_arm_data.q_d_nullspace_(3) - q(3));
-  null_space_error(4)=(right_arm_data.q_d_nullspace_(4) - q(4));
-  null_space_error(5)=(right_arm_data.q_d_nullspace_(5) - q(5));
-  null_space_error(6)=(right_arm_data.q_d_nullspace_(6) - q(6));
+  null_space_error(0)=(q_d_nullspace_target(0) - q(0));
+  null_space_error(1)=(q_d_nullspace_target(1) - q(1));
+  null_space_error(2)=(q_d_nullspace_target(2) - q(2));
+  null_space_error(3)=(q_d_nullspace_target(3) - q(3));
+  null_space_error(4)=(q_d_nullspace_target(4) - q(4));
+  null_space_error(5)=(q_d_nullspace_target(5) - q(5));
+  null_space_error(6)=(q_d_nullspace_target(6) - q(6));
   // Cartesian PD control with damping ratio = 1
   tau_task << jacobian.transpose() * (-right_arm_data.cartesian_stiffness_ * error_right -
                                       right_arm_data.cartesian_damping_ * (jacobian * dq));
@@ -748,6 +887,24 @@ void BiManualCartesianImpedanceControl::complianceParamCallback(
 
 }
 
+void BiManualCartesianImpedanceControl::freezeDesiredPoses() {
+    auto& left_arm_data = arms_data_.at(left_arm_id_);
+    auto& right_arm_data = arms_data_.at(right_arm_id_);
+
+    // freeze left arm poses
+    frozen_pose_left_.position_d = left_arm_data.position_d_;
+    frozen_pose_left_.orientation_d = left_arm_data.orientation_d_;
+    frozen_pose_left_.position_d_relative = left_arm_data.position_d_relative_;
+    frozen_pose_left_.q_d_nullspace = left_arm_data.q_d_nullspace_;
+
+    // freeze right arm poses
+    frozen_pose_right_.position_d = right_arm_data.position_d_;
+    frozen_pose_right_.orientation_d = right_arm_data.orientation_d_;
+    frozen_pose_right_.position_d_relative = right_arm_data.position_d_relative_;
+    frozen_pose_right_.q_d_nullspace = right_arm_data.q_d_nullspace_;
+
+    ROS_WARN("CONTROLLER STATE: STOPPED! Freezing desired poses. Waiting for E-Stop cycle to recover.");
+}
 
 double BiManualCartesianImpedanceControl::calculateTauJointLimit(double q_value, double threshold, double magnitude, double upper_bound, double lower_bound) {
     double upper_limit = upper_bound - threshold;
@@ -763,6 +920,9 @@ double BiManualCartesianImpedanceControl::calculateTauJointLimit(double q_value,
 
 void BiManualCartesianImpedanceControl::equilibriumPoseCallback_left(
     const geometry_msgs::PoseStampedConstPtr& msg) {
+  if (controller_state_ != controller_interface::ControllerBase::ControllerState::RUNNING) {
+    return; // Don't accept new poses while in a non-normal state
+  }
   if (!initial_heartbeat_received_.load()) { // atomic read
       return; // Skip update if initial heartbeat not received
   }
@@ -775,6 +935,9 @@ void BiManualCartesianImpedanceControl::equilibriumPoseCallback_left(
 
 void BiManualCartesianImpedanceControl::equilibriumPoseCallback_right(
     const geometry_msgs::PoseStampedConstPtr& msg) {
+  if (controller_state_ != controller_interface::ControllerBase::ControllerState::RUNNING) {
+    return; // Don't accept new poses while in a non-normal state
+  }
   if (!initial_heartbeat_received_.load()) { // atomic read
       return; // Skip update if initial heartbeat not received
   }
@@ -788,7 +951,10 @@ void BiManualCartesianImpedanceControl::equilibriumPoseCallback_right(
 
 void BiManualCartesianImpedanceControl::equilibriumPoseCallback_relative(
     const geometry_msgs::PoseStampedConstPtr& msg) {
-      //This function is receiving the distance from the distance respect the right arm and the left
+  if (controller_state_ != controller_interface::ControllerBase::ControllerState::RUNNING) {
+    return; // Don't accept new poses while in a non-normal state
+  }
+  //This function is receiving the distance from the distance respect the right arm and the left
   auto& right_arm_data = arms_data_.at(right_arm_id_);
   auto&  left_arm_data = arms_data_.at(left_arm_id_);
   left_arm_data.position_d_relative_  << msg->pose.position.x, msg->pose.position.y, msg->pose.position.z;
@@ -797,7 +963,9 @@ void BiManualCartesianImpedanceControl::equilibriumPoseCallback_relative(
 }
 
 void BiManualCartesianImpedanceControl::equilibriumConfigurationCallback_right(const sensor_msgs::JointState::ConstPtr& joint) {
-
+  if (controller_state_ != controller_interface::ControllerBase::ControllerState::RUNNING) {
+    return; // Don't accept new poses while in a non-normal state
+  }
   auto& right_arm_data = arms_data_.at(right_arm_id_);
   std::vector<double> read_joint_right;
   read_joint_right= joint -> position;
@@ -811,7 +979,9 @@ void BiManualCartesianImpedanceControl::equilibriumConfigurationCallback_right(c
 }
 
 void BiManualCartesianImpedanceControl::equilibriumConfigurationCallback_left(const sensor_msgs::JointState::ConstPtr& joint) {
-
+  if (controller_state_ != controller_interface::ControllerBase::ControllerState::RUNNING) {
+    return; // Don't accept new poses while in a non-normal state
+  }
   auto& left_arm_data = arms_data_.at(left_arm_id_);
   std::vector<double> read_joint_left;
   read_joint_left= joint -> position;
