@@ -490,16 +490,6 @@ void BiManualCartesianImpedanceControl::updateArmLeft() {
   // compute "orientation error"
   error_left.tail(3) << error_quaternion_angle_axis.axis() * error_quaternion_angle_axis.angle();
 
-
-  // define orientation error clipping limit
-  const double orientation_delta_lim = delta_lim * 6.0;
-  // calculate the magnitude of the orientation error
-  double orientation_error_magnitude = error_left.tail(3).norm();
-  if (orientation_error_magnitude > orientation_delta_lim) {
-    // scale the orientation error to the orientation_delta_lim
-    error_left.tail(3) *= (orientation_delta_lim / orientation_error_magnitude);
-  }
-
   // compute control
   // allocate variables
   Eigen::VectorXd tau_task(7), tau_nullspace_left(7), tau_d_left(7), tau_joint_limit(7), null_space_error(7), tau_relative(7);
@@ -691,15 +681,6 @@ void BiManualCartesianImpedanceControl::updateArmRight() {
   Eigen::AngleAxisd error_quaternion_angle_axis(error_quaternion);
   // compute "orientation error"
   error_right.tail(3) << error_quaternion_angle_axis.axis() * error_quaternion_angle_axis.angle();
-
-  // define orientation error clipping limit
-  const double orientation_delta_lim = delta_lim * 6.0;
-  // calculate the magnitude of the orientation error
-  double orientation_error_magnitude = error_right.tail(3).norm();
-  if (orientation_error_magnitude > orientation_delta_lim) {
-    // scale the orientation error to the orientation_delta_lim
-    error_right.tail(3) *= (orientation_delta_lim / orientation_error_magnitude);
-  }
 
   // compute control
   // allocate variables
