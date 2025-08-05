@@ -492,7 +492,7 @@ void BiManualCartesianImpedanceControl::updateArmLeft() {
 
 
   // define orientation error clipping limit
-  const double orientation_delta_lim = delta_lim * 3.0;
+  const double orientation_delta_lim = delta_lim * 6.0;
   // calculate the magnitude of the orientation error
   double orientation_error_magnitude = error_left.tail(3).norm();
   if (orientation_error_magnitude > orientation_delta_lim) {
@@ -693,7 +693,7 @@ void BiManualCartesianImpedanceControl::updateArmRight() {
   error_right.tail(3) << error_quaternion_angle_axis.axis() * error_quaternion_angle_axis.angle();
 
   // define orientation error clipping limit
-  const double orientation_delta_lim = delta_lim * 3.0;
+  const double orientation_delta_lim = delta_lim * 6.0;
   // calculate the magnitude of the orientation error
   double orientation_error_magnitude = error_right.tail(3).norm();
   if (orientation_error_magnitude > orientation_delta_lim) {
